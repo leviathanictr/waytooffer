@@ -1,0 +1,206 @@
+openapi: 3.0.3
+info:
+  title: Resume Builder API
+  version: 1.0.0
+  description: API для генерации резюме через AI-чат
+
+servers:
+  - url: http://localhost:8000
+    description: Local dev
+
+paths:
+
+  /session:
+    post:
+      summary: Создать новую сессию (по вакансии)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vacancy_url:
+                  type: string
+                  description: Ссылка на вакансию (опционально)
+                  example: "https://hh.ru/vacancy/123456"
+                vacancy_text:
+                  type: string
+                  description: Текстовое описание вакансии (опционально)
+                  example: "Ищем бизнес-аналитика со знанием Python..."
+              oneOf:
+                - required: [vacancy_url]
+                - required: [vacancy_text]
+      responses:
+        "201":
+          description: Сессия создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+
+  /session/{session_id}/message:
+    post:
+      summary: Отправить сообщение в AI-чат
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  example: "У меня есть опыт работы с Python 2 года"
+      responses:
+        "200":
+          description: Ответ AI
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reply:
+                    type: string
+                    description: Следующий вопрос или подтверждение от AI
+                  is_complete:
+                    type: boolean
+                    description: true — AI собрал достаточно данных
+
+  /session/{session_id}/generate:
+    post:
+      summary: Сгенерировать резюме (вызывается когда is_complete=true)
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Резюме сгенерировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resume'
+
+  /resume/{resume_id}:
+    get:
+      summary: Получить резюме по ID
+      parameters:
+        - in: path
+          name: resume_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resume'
+
+  /resume/{resume_id}/pdf:
+    get:
+      summary: Скачать резюме в PDF
+      parameters:
+        - in: path
+          name: resume_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+components:
+  schemas:
+
+    Session:
+      type: object
+      properties:
+        session_id:
+          type: string
+          example: "sess_abc123"
+        vacancy_summary:
+          type: string
+          description: Краткое резюме вакансии, сформированное AI
+        created_at:
+          type: string
+          format: date-time
+
+    Resume:
+      type: object
+      properties:
+        resume_id:
+          type: string
+        session_id:
+          type: string
+        data:
+          $ref: '#/components/schemas/ResumeData'
+        pdf_url:
+          type: string
+          example: "/resume/res_abc123/pdf"
+        created_at:
+          type: string
+          format: date-time
+
+    ResumeData:
+      type: object
+      properties:
+        personal:
+          type: object
+          properties:
+            name: { type: string }
+            city: { type: string }
+            phone: { type: string }
+            email: { type: string }
+            links: { type: array, items: { type: string } }
+            about: { type: string }
+        education:
+          type: array
+          items:
+            type: object
+            properties:
+              university: { type: string }
+              faculty: { type: string }
+              speciality: { type: string }
+              year: { type: string }
+              achievements: { type: string }
+        experience:
+          type: array
+          items:
+            type: object
+            properties:
+              title: { type: string }
+              role: { type: string }
+              description: { type: string }
+              result: { type: string }
+        skills:
+          type: object
+          properties:
+            hard: { type: array, items: { type: string } }
+            soft: { type: array, items: { type: string } }
+        languages:
+          type: array
+          items:
+            type: object
+            properties:
+              language: { type: string }
+              level: { type: string }
+        extra:
+          type: object
+          properties:
+            projects: { type: array, items: { type: string } }
+            hobbies: { type: string }
