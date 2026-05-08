@@ -38,6 +38,7 @@ export default function RegisterPage() {
     try {
       const { data } = await auth.register(form)
       saveUserId(data.user_id)
+      toast.success('Аккаунт создан! Введите коды подтверждения.')
       router.push('/verify')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail

@@ -31,7 +31,9 @@ export default function LoginPage() {
     try {
       const { data } = await auth.login(form)
       saveTokens(data.access_token, data.refresh_token)
-      router.push('/')
+      toast.success('Добро пожаловать!')
+      const onboarded = localStorage.getItem('wto_onboarded')
+      router.push(onboarded ? '/' : '/onboarding')
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response?.status
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail

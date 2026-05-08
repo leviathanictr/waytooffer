@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 import json
-from weasyprint import HTML
+
+try:
+    from weasyprint import HTML as _WeasyHTML  # noqa: F401
+    def _render_pdf(html: str) -> bytes:
+        return _WeasyHTML(string=html).write_pdf()  # type: ignore[return-value]
+except Exception:
+    def _render_pdf(_html: str) -> bytes:  # type: ignore[misc]
+        raise RuntimeError(
+            "WeasyPrint не установлен. На Windows установите GTK3 runtime: "
+            "https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer"
+        )
 
 HTML_TEMPLATE = """\
 <!DOCTYPE html>
@@ -494,5 +504,4 @@ def generate_pdf(resume_data: dict) -> bytes:
         extra_block=extra_block,
     )
 
-    pdf_bytes: bytes = HTML(string=html_content).write_pdf()
-    return pdf_bytes
+    return _render_pdf(html_content)

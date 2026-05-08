@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { auth } from '@/lib/api'
-import { getUserId, saveTokens } from '@/lib/auth'
+import { getUserId } from '@/lib/auth'
 import { CheckCircle } from 'lucide-react'
 
 export default function VerifyPage() {
@@ -35,8 +35,8 @@ export default function VerifyPage() {
 
   useEffect(() => {
     if (emailVerified && phoneVerified) {
-      toast.success('Аккаунт подтверждён!')
-      setTimeout(() => router.push('/onboarding'), 1000)
+      toast.success('Аккаунт подтверждён! Войдите в систему.')
+      setTimeout(() => router.push('/login'), 1500)
     }
   }, [emailVerified, phoneVerified, router])
 
@@ -110,8 +110,7 @@ export default function VerifyPage() {
   }
 
   async function handleSkip() {
-    // Try to proceed even without verification — login may handle this
-    router.push('/onboarding')
+    router.push('/login')
   }
 
   return (
@@ -123,6 +122,11 @@ export default function VerifyPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Мы отправили коды подтверждения на ваш email и телефон
           </p>
+          {process.env.NODE_ENV === 'development' && (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 text-center">
+              Dev-режим: коды напечатаны в консоли бэкенда
+            </p>
+          )}
         </div>
 
         {/* Email verification */}
