@@ -14,7 +14,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(String, primary_key=True, index=True)
-    phone = Column(String, unique=True, nullable=False, index=True)
+    phone = Column(String, unique=True, nullable=True, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
     email_verified = Column(Boolean, default=False, nullable=False)
@@ -47,6 +47,7 @@ class Profile(Base):
     faculty = Column(String, nullable=True)
     speciality = Column(String, nullable=True)
     graduation_year = Column(String, nullable=True)
+    telegram = Column(String, nullable=True)
     languages = Column(Text, nullable=True)       # JSON: [{language, level}]
     links = Column(Text, nullable=True)           # JSON: ["url", ...]
     education_list = Column(Text, nullable=True)  # JSON: [{university, faculty, speciality, year, achievements}]

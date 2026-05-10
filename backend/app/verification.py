@@ -89,7 +89,7 @@ def send_sms_code(phone: str, code: str) -> None:
       fmt         — 3 (JSON response)
       sender      — alphanumeric name shown to recipient (optional, must be pre-registered)
     """
-    print(f"[DEV] SMS code for {phone}: {code}")
+    print(f"[INFO] Sending SMS to {phone}")
     creds = _smsc_credentials()
     if creds is None:
         return
@@ -130,15 +130,15 @@ def send_email_code(email: str, code: str) -> None:
     """
     Отправка email через SMTP (Google/Yandex/др.).
     """
-    print(f"[DEV] Email code for {email}: {code}")
-    
+    print(f"[INFO] Sending email to {email}")
+
     smtp_server = os.getenv("SMTP_SERVER", "").strip()
     smtp_port = os.getenv("SMTP_PORT", "465").strip()
     smtp_user = os.getenv("SMTP_USER", "").strip()
     smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
-    
+
     if not smtp_server or not smtp_user or not smtp_pass:
-        print("[DEV] SMTP credentials not fully configured. Email not sent.")
+        print("[ERROR] SMTP credentials not configured. Check SMTP_SERVER, SMTP_USER, SMTP_PASSWORD in .env")
         return
 
     subject = "Ваш код подтверждения — WayToOffer"

@@ -22,7 +22,6 @@ class LanguageItem(BaseModel):
 # ---------------------------------------------------------------------------
 
 class RegisterRequest(BaseModel):
-    phone: str
     email: EmailStr
     password: str
     password_confirm: str
@@ -38,7 +37,7 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    login: str  # phone or email
+    login: str  # email
     password: str
 
 
@@ -81,6 +80,11 @@ class ChangeEmailRequest(BaseModel):
     password: str
 
 
+class ChangeEmailConfirm(BaseModel):
+    new_email: EmailStr
+    code: str
+
+
 class ChangePhoneRequest(BaseModel):
     new_phone: str
     password: str
@@ -102,6 +106,7 @@ class ProfileUpdate(BaseModel):
     name: Optional[str] = None
     city: Optional[str] = None
     phone: Optional[str] = None
+    telegram: Optional[str] = None
     email: Optional[str] = None
     link_hh: Optional[str] = None
     link_portfolio: Optional[str] = None
@@ -120,6 +125,7 @@ class ProfileResponse(BaseModel):
     name: Optional[str] = None
     city: Optional[str] = None
     phone: Optional[str] = None
+    telegram: Optional[str] = None
     email: Optional[str] = None
     link_hh: Optional[str] = None
     link_portfolio: Optional[str] = None

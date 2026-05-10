@@ -107,6 +107,7 @@ def profile_to_str(profile: models.Profile | None) -> str:
     add("Имя", profile.name)
     add("Город", profile.city)
     add("Телефон", profile.phone)
+    add("Telegram", profile.telegram)
     add("Email", profile.email)
     add("Ссылка hh.ru", profile.link_hh)
     add("Портфолио / GitHub", profile.link_portfolio)

@@ -27,6 +27,7 @@ from app.auth import (
 from app.database import engine, Base, get_db
 from app.schemas import (
     AccessTokenResponse,
+    ChangeEmailConfirm,
     ChangeEmailRequest,
     ChangePasswordRequest,
     ChangePhoneRequest,
@@ -63,15 +64,38 @@ from app.pdf import generate_pdf
 # Create all tables on startup (models must be imported first so Base knows about them)
 Base.metadata.create_all(bind=engine)
 
-# Column migrations for existing tables (safe — ignores already-existing columns)
+# Column migrations for existing tables
 from sqlalchemy import text as _sql_text
 with engine.connect() as _conn:
-    for _col in [("links", "TEXT"), ("education_list", "TEXT")]:
+    # Add new Profile columns
+    for _col in [("links", "TEXT"), ("education_list", "TEXT"), ("telegram", "TEXT")]:
         try:
             _conn.execute(_sql_text(f"ALTER TABLE profiles ADD COLUMN {_col[0]} {_col[1]}"))
             _conn.commit()
         except Exception:
             pass
+    # Make users.phone nullable (SQLite requires table recreation)
+    try:
+        _info = _conn.execute(_sql_text("PRAGMA table_info(users)")).fetchall()
+        _phone = next((r for r in _info if r[1] == "phone"), None)
+        if _phone and _phone[3] == 1:  # notnull=1 → need migration
+            _conn.execute(_sql_text("""
+                CREATE TABLE users_new (
+                    id TEXT PRIMARY KEY,
+                    phone TEXT UNIQUE,
+                    email TEXT UNIQUE NOT NULL,
+                    hashed_password TEXT NOT NULL,
+                    email_verified INTEGER NOT NULL DEFAULT 0,
+                    phone_verified INTEGER NOT NULL DEFAULT 1,
+                    created_at DATETIME NOT NULL
+                )
+            """))
+            _conn.execute(_sql_text("INSERT INTO users_new SELECT id, phone, email, hashed_password, email_verified, phone_verified, created_at FROM users"))
+            _conn.execute(_sql_text("DROP TABLE users"))
+            _conn.execute(_sql_text("ALTER TABLE users_new RENAME TO users"))
+            _conn.commit()
+    except Exception as _e:
+        pass
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -113,6 +137,7 @@ def _profile_to_response(profile: models.Profile) -> ProfileResponse:
         name=profile.name,
         city=profile.city,
         phone=profile.phone,
+        telegram=profile.telegram,
         email=profile.email,
         link_hh=profile.link_hh,
         link_portfolio=profile.link_portfolio,
@@ -163,12 +188,6 @@ def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DBSes
             detail="Passwords do not match",
         )
 
-    # Check uniqueness
-    if db.query(models.User).filter(models.User.phone == body.phone).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Phone number already registered",
-        )
     if db.query(models.User).filter(models.User.email == body.email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -178,7 +197,7 @@ def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DBSes
     user_id = str(uuid.uuid4())
     user = models.User(
         id=user_id,
-        phone=body.phone,
+        phone=None,
         email=body.email,
         hashed_password=hash_password(body.password),
         email_verified=False,
@@ -203,11 +222,7 @@ def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DBSes
 
 @app.post("/auth/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: DBSession = Depends(get_db)):
-    # Determine lookup by email or phone
-    if "@" in body.login:
-        user = db.query(models.User).filter(models.User.email == body.login).first()
-    else:
-        user = db.query(models.User).filter(models.User.phone == body.login).first()
+    user = db.query(models.User).filter(models.User.email == body.login).first()
 
     if user is None or not verify_password(body.password, user.hashed_password):
         raise HTTPException(
@@ -325,28 +340,38 @@ def change_password(
     return {"message": "Password changed successfully"}
 
 
-@app.post("/auth/change-email", status_code=status.HTTP_200_OK)
-def change_email(
+@app.post("/auth/change-email/request", status_code=status.HTTP_200_OK)
+def change_email_request(
     body: ChangeEmailRequest,
+    background_tasks: BackgroundTasks,
     current_user: Annotated[models.User, Depends(get_current_user)],
     db: DBSession = Depends(get_db),
 ):
     if not verify_password(body.password, current_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password is incorrect",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password is incorrect")
 
     existing = db.query(models.User).filter(models.User.email == body.new_email).first()
     if existing and existing.id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already in use",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use")
+
+    # Store new email in the verification type so confirm can validate it
+    code = create_verification_code(current_user.id, f"email_change:{body.new_email}", db)
+    background_tasks.add_task(send_email_code, body.new_email, code)
+    return {"message": "Код отправлен на новый email"}
+
+
+@app.post("/auth/change-email/confirm", status_code=status.HTTP_200_OK)
+def change_email_confirm(
+    body: ChangeEmailConfirm,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+    db: DBSession = Depends(get_db),
+):
+    if not verify_code(current_user.id, f"email_change:{body.new_email}", body.code, db):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неверный или просроченный код")
 
     current_user.email = body.new_email
     db.commit()
-    return {"message": "Email changed successfully"}
+    return {"message": "Email успешно изменён"}
 
 
 @app.post("/auth/change-phone", status_code=status.HTTP_200_OK)
@@ -418,6 +443,8 @@ def update_profile(
         profile.city = body.city
     if body.phone is not None:
         profile.phone = body.phone
+    if body.telegram is not None:
+        profile.telegram = body.telegram
     if body.email is not None:
         profile.email = body.email
     if body.link_hh is not None:
