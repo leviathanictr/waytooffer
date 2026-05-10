@@ -5,6 +5,8 @@ info:
   description: API для генерации резюме через AI-чат
 
 servers:
+  - url: https://api.waytooffer.ru
+    description: Production
   - url: http://localhost:8000
     description: Local dev
 

@@ -79,7 +79,7 @@ with engine.connect() as _conn:
 
 app = FastAPI(title="Resume Builder API", version="1.0.0")
 
-_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001")
+_cors_raw = os.getenv("CORS_ORIGINS", "https://waytooffer.ru")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 
 app.add_middleware(
