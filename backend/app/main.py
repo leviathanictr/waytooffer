@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime
 from typing import Annotated, List
@@ -9,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()  # Load .env before anything that reads env-vars
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session as DBSession
@@ -30,6 +31,7 @@ from app.schemas import (
     ChangePasswordRequest,
     ChangePhoneRequest,
     ChatResponse,
+    EducationItem,
     LoginRequest,
     MessageRequest,
     ProfileResponse,
@@ -51,7 +53,6 @@ from app.schemas import (
 from app.verification import (
     create_verification_code,
     send_email_code,
-    send_sms_code,
     verify_code,
 )
 from app.ai import chat_response as ai_chat_response
@@ -62,15 +63,28 @@ from app.pdf import generate_pdf
 # Create all tables on startup (models must be imported first so Base knows about them)
 Base.metadata.create_all(bind=engine)
 
+# Column migrations for existing tables (safe — ignores already-existing columns)
+from sqlalchemy import text as _sql_text
+with engine.connect() as _conn:
+    for _col in [("links", "TEXT"), ("education_list", "TEXT")]:
+        try:
+            _conn.execute(_sql_text(f"ALTER TABLE profiles ADD COLUMN {_col[0]} {_col[1]}"))
+            _conn.commit()
+        except Exception:
+            pass
+
 # ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="Resume Builder API", version="1.0.0")
 
+_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001")
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -81,19 +95,20 @@ app.add_middleware(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _languages_to_list(languages_json: str | None) -> list[dict]:
-    """Parse a JSON string into a list of language dicts (safe fallback)."""
-    if not languages_json:
+def _json_list(raw: str | None) -> list:
+    if not raw:
         return []
     try:
-        return json.loads(languages_json)
+        return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return []
 
 
 def _profile_to_response(profile: models.Profile) -> ProfileResponse:
-    langs_raw = _languages_to_list(profile.languages)
-    langs = [LanguageItem(**item) for item in langs_raw]
+    langs = [LanguageItem(**item) for item in _json_list(profile.languages)]
+    edu_raw = _json_list(profile.education_list)
+    edu_list = [EducationItem(**item) for item in edu_raw]
+    links = _json_list(profile.links)
     return ProfileResponse(
         name=profile.name,
         city=profile.city,
@@ -106,6 +121,8 @@ def _profile_to_response(profile: models.Profile) -> ProfileResponse:
         speciality=profile.speciality,
         graduation_year=profile.graduation_year,
         languages=langs,
+        links=links,
+        education_list=edu_list,
     )
 
 
@@ -139,7 +156,7 @@ def _resume_to_list_item(resume: models.Resume) -> ResumeListItem:
 # ---------------------------------------------------------------------------
 
 @app.post("/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, db: DBSession = Depends(get_db)):
+def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DBSession = Depends(get_db)):
     if body.password != body.password_confirm:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -165,7 +182,7 @@ def register(body: RegisterRequest, db: DBSession = Depends(get_db)):
         email=body.email,
         hashed_password=hash_password(body.password),
         email_verified=False,
-        phone_verified=False,
+        phone_verified=True,  # SMS disabled — verified automatically
         created_at=datetime.utcnow(),
     )
     db.add(user)
@@ -176,12 +193,10 @@ def register(body: RegisterRequest, db: DBSession = Depends(get_db)):
 
     db.commit()
 
-    # Send verification codes
+    # Send email verification code
     email_code = create_verification_code(user_id, "email", db)
-    sms_code = create_verification_code(user_id, "phone", db)
-
-    send_email_code(body.email, email_code)
-    send_sms_code(body.phone, sms_code)
+    background_tasks.add_task(send_email_code, body.email, email_code)
+    # SMS verification disabled (phone_verified=True at creation)
 
     return RegisterResponse(user_id=user_id, needs_verification=True)
 
@@ -274,7 +289,7 @@ def verify_phone(body: VerifyPhoneRequest, db: DBSession = Depends(get_db)):
 
 
 @app.post("/auth/resend-verification", response_model=VerifyResponse)
-def resend_verification(body: ResendVerificationRequest, db: DBSession = Depends(get_db)):
+def resend_verification(body: ResendVerificationRequest, background_tasks: BackgroundTasks, db: DBSession = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == body.user_id).first()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -282,11 +297,10 @@ def resend_verification(body: ResendVerificationRequest, db: DBSession = Depends
     code = create_verification_code(body.user_id, body.type, db)
 
     if body.type == "email":
-        send_email_code(user.email, code)
-    else:
-        send_sms_code(user.phone, code)
+        background_tasks.add_task(send_email_code, user.email, code)
+    # SMS disabled — phone is auto-verified; ignore resend requests for phone
 
-    return VerifyResponse(success=True, message=f"Код отправлен на {'email' if body.type == 'email' else 'телефон'}")
+    return VerifyResponse(success=True, message="Код отправлен на email")
 
 
 @app.post("/auth/change-password", status_code=status.HTTP_200_OK)
@@ -421,6 +435,12 @@ def update_profile(
     if body.languages is not None:
         profile.languages = json.dumps(
             [lang.model_dump() for lang in body.languages], ensure_ascii=False
+        )
+    if body.links is not None:
+        profile.links = json.dumps(body.links, ensure_ascii=False)
+    if body.education_list is not None:
+        profile.education_list = json.dumps(
+            [edu.model_dump() for edu in body.education_list], ensure_ascii=False
         )
 
     db.commit()

@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { auth } from '@/lib/api'
 import { saveUserId } from '@/lib/auth'
+import { Loader2 } from 'lucide-react'
+import axios from 'axios'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -26,6 +28,7 @@ export default function RegisterPage() {
     if (!form.phone.match(/^\+7\d{10}$/)) e.phone = 'Введите номер в формате +7XXXXXXXXXX'
     if (!form.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) e.email = 'Введите корректный email'
     if (form.password.length < 8) e.password = 'Минимум 8 символов'
+    if (form.password.length > 72) e.password = 'Максимум 72 символа'
     if (form.password !== form.password_confirm) e.password_confirm = 'Пароли не совпадают'
     setErrors(e)
     return Object.keys(e).length === 0
@@ -41,10 +44,28 @@ export default function RegisterPage() {
       toast.success('Аккаунт создан! Введите коды подтверждения.')
       router.push('/verify')
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      if (msg?.includes('Phone')) toast.error('Этот номер телефона уже зарегистрирован')
-      else if (msg?.includes('Email')) toast.error('Этот email уже зарегистрирован')
-      else toast.error('Ошибка регистрации. Попробуйте ещё раз.')
+      console.error('[register] error:', err)
+      if (axios.isAxiosError(err)) {
+        if (!err.response) {
+          toast.error('Не удалось подключиться к серверу. Убедитесь что бэкенд запущен на порту 8000.')
+        } else {
+          const rawDetail = err.response.data?.detail
+          const detail: string = Array.isArray(rawDetail)
+            ? (rawDetail[0]?.msg ?? String(rawDetail[0]))
+            : (rawDetail ?? '')
+          if (detail.toLowerCase().includes('phone')) {
+            toast.error('Этот номер телефона уже зарегистрирован')
+          } else if (detail.toLowerCase().includes('email')) {
+            toast.error('Этот email уже зарегистрирован')
+          } else if (detail.toLowerCase().includes('72')) {
+            toast.error('Пароль слишком длинный (максимум 72 символа)')
+          } else {
+            toast.error(`Ошибка: ${detail || err.response.statusText}`)
+          }
+        }
+      } else {
+        toast.error('Неожиданная ошибка. Откройте консоль браузера для деталей.')
+      }
     } finally {
       setLoading(false)
     }
@@ -68,8 +89,8 @@ export default function RegisterPage() {
                 placeholder="+7XXXXXXXXXX"
                 value={form.phone}
                 onChange={e => {
-                  let v = e.target.value
-                  if (!v.startsWith('+7')) v = '+7' + v.replace(/^\+7?/, '')
+                  let v = e.target.value.replace(/\s/g, '')
+                  if (!v.startsWith('+7')) v = '+7'
                   setForm(f => ({ ...f, phone: v }))
                 }}
                 className={errors.phone ? 'border-destructive' : ''}
@@ -96,6 +117,7 @@ export default function RegisterPage() {
                 id="password"
                 type="password"
                 placeholder="Минимум 8 символов"
+                maxLength={72}
                 value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                 className={errors.password ? 'border-destructive' : ''}
@@ -109,6 +131,7 @@ export default function RegisterPage() {
                 id="password_confirm"
                 type="password"
                 placeholder="Повторите пароль"
+                maxLength={72}
                 value={form.password_confirm}
                 onChange={e => setForm(f => ({ ...f, password_confirm: e.target.value }))}
                 className={errors.password_confirm ? 'border-destructive' : ''}
@@ -117,7 +140,7 @@ export default function RegisterPage() {
             </div>
 
             <Button type="submit" disabled={loading} className="w-full h-12 mt-2">
-              {loading ? 'Создаём аккаунт...' : 'Зарегистрироваться'}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Создаём аккаунт...</> : 'Зарегистрироваться'}
             </Button>
           </form>
 

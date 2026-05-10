@@ -1,507 +1,371 @@
 from __future__ import annotations
 
-import json
+import pathlib
 
-try:
-    from weasyprint import HTML as _WeasyHTML  # noqa: F401
-    def _render_pdf(html: str) -> bytes:
-        return _WeasyHTML(string=html).write_pdf()  # type: ignore[return-value]
-except Exception:
-    def _render_pdf(_html: str) -> bytes:  # type: ignore[misc]
-        raise RuntimeError(
-            "WeasyPrint не установлен. На Windows установите GTK3 runtime: "
-            "https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer"
+# ---------------------------------------------------------------------------
+# Font discovery
+# ---------------------------------------------------------------------------
+
+_FONT_PAIRS = [
+    ("C:/Windows/Fonts/arial.ttf",    "C:/Windows/Fonts/arialbd.ttf"),
+    ("C:/Windows/Fonts/calibri.ttf",  "C:/Windows/Fonts/calibrib.ttf"),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+    ("/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+     "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"),
+]
+
+_FONT_REG: str | None = None
+_FONT_BOLD: str | None = None
+for _r, _b in _FONT_PAIRS:
+    if pathlib.Path(_r).exists() and pathlib.Path(_b).exists():
+        _FONT_REG, _FONT_BOLD = _r, _b
+        break
+
+
+# ---------------------------------------------------------------------------
+# PDF builder (fpdf2 — works on Windows without GTK3)
+# ---------------------------------------------------------------------------
+
+def _build_fpdf(data: dict) -> bytes:
+    from fpdf import FPDF
+
+    RED   = (170, 25, 25)
+    DARK  = (25, 25, 25)
+    GREY  = (95, 95, 95)
+    LGREY = (200, 200, 200)
+
+    pdf = FPDF(format="A4")
+    LM, TM, RM = 16, 16, 16
+    pdf.set_margins(LM, TM, RM)
+    pdf.set_auto_page_break(True, margin=16)
+    pdf.add_page()
+
+    if _FONT_REG and _FONT_BOLD:
+        pdf.add_font("F", "",  _FONT_REG)
+        pdf.add_font("F", "B", _FONT_BOLD)
+        FN = "F"
+    else:
+        FN = "Helvetica"
+
+    W   = pdf.w - LM - RM          # ≈ 178 mm
+    LW  = W * 0.615                 # left column  ≈ 109 mm
+    GAP = 7.0                       # gap between columns
+    RW  = W - LW - GAP             # right column ≈ 62 mm
+    RX  = LM + LW + GAP            # right column X
+
+    def safe(v, default="") -> str:
+        return str(v).strip() if v else default
+
+    # ── DATA ─────────────────────────────────────────────────────────────────
+    p        = data.get("personal") or {}
+    education = data.get("education") or []
+    experience = data.get("experience") or []
+    skills   = data.get("skills") or {}
+    languages = data.get("languages") or []
+    extra    = data.get("extra") or {}
+
+    name    = safe(p.get("name"), "Без имени")
+    city    = safe(p.get("city"))
+    phone   = safe(p.get("phone"))
+    email   = safe(p.get("email"))
+    links   = [safe(l) for l in (p.get("links") or []) if safe(l)]
+    about   = safe(p.get("about"))
+    hard    = [safe(s) for s in (skills.get("hard") or []) if safe(s)]
+    soft    = [safe(s) for s in (skills.get("soft") or []) if safe(s)]
+
+    # ── HEADER ───────────────────────────────────────────────────────────────
+    # Name (left) + contact info (right) on same baseline
+    contact = []
+    if city:  contact.append(city)
+    if phone: contact.append(phone)
+    if email: contact.append(email)
+    for lnk in links:
+        contact.append(lnk)
+
+    start_y = pdf.get_y()
+
+    # Name
+    pdf.set_font(FN, "B", 22)
+    pdf.set_text_color(*DARK)
+    pdf.set_xy(LM, start_y)
+    pdf.multi_cell(LW, 9, name, align="L")
+    name_end_y = pdf.get_y()
+
+    # Contact (right, stacked)
+    pdf.set_font(FN, "", 8.5)
+    pdf.set_text_color(*GREY)
+    cy = start_y
+    for line in contact:
+        pdf.set_xy(RX, cy)
+        pdf.cell(RW, 5, line, align="R")
+        cy += 5
+
+    # About (under name, full left column width)
+    if about:
+        pdf.set_xy(LM, name_end_y + 1)
+        pdf.set_font(FN, "", 9)
+        pdf.set_text_color(*DARK)
+        pdf.multi_cell(LW, 4.5, about, align="L")
+
+    header_end_y = max(pdf.get_y(), cy) + 3
+    pdf.set_draw_color(*LGREY)
+    pdf.set_line_width(0.4)
+    pdf.line(LM, header_end_y, LM + W, header_end_y)
+
+    content_y = header_end_y + 5  # both columns start here
+
+    # ── LEFT COLUMN HELPERS ──────────────────────────────────────────────────
+    def left_sec(title: str) -> None:
+        pdf.set_font(FN, "B", 9.5)
+        pdf.set_text_color(*RED)
+        pdf.set_xy(LM, pdf.get_y())
+        pdf.cell(LW, 5.5, title.upper(), ln=True)
+        y = pdf.get_y()
+        pdf.set_draw_color(*LGREY)
+        pdf.line(LM, y, LM + LW - 2, y)
+        pdf.ln(3)
+
+    def left_text(txt: str, size=9, bold=False, color=DARK, after=1.0) -> None:
+        if not txt:
+            return
+        pdf.set_font(FN, "B" if bold else "", size)
+        pdf.set_text_color(*color)
+        pdf.set_x(LM)
+        pdf.multi_cell(LW, 4.5, txt, align="L")
+        if after:
+            pdf.ln(after)
+
+    # ── RIGHT COLUMN HELPERS ─────────────────────────────────────────────────
+    # We track right-column Y separately
+    r_y = content_y
+
+    def right_sec(title: str) -> None:
+        nonlocal r_y
+        pdf.set_font(FN, "B", 9.5)
+        pdf.set_text_color(*RED)
+        pdf.set_xy(RX, r_y)
+        pdf.cell(RW, 5.5, title.upper(), ln=False)
+        r_y += 5.5
+        pdf.set_draw_color(*LGREY)
+        pdf.line(RX, r_y, RX + RW, r_y)
+        r_y += 3
+
+    def right_line(txt: str, size=9, bold=False, color=DARK, after=1.5) -> None:
+        nonlocal r_y
+        if not txt:
+            return
+        pdf.set_font(FN, "B" if bold else "", size)
+        pdf.set_text_color(*color)
+        # Use margin trick so multi_cell wraps at RX+RW
+        old_lm = pdf.l_margin
+        old_rm = pdf.r_margin
+        pdf.set_left_margin(RX)
+        pdf.set_right_margin(pdf.w - RX - RW)
+        pdf.set_xy(RX, r_y)
+        pdf.multi_cell(RW, 4.5, txt, align="L")
+        pdf.set_left_margin(old_lm)
+        pdf.set_right_margin(old_rm)
+        r_y = pdf.get_y() + after
+
+    # ── LEFT COLUMN ──────────────────────────────────────────────────────────
+    pdf.set_y(content_y)
+
+    if education:
+        left_sec("Образование")
+        for edu in education:
+            uni = safe(edu.get("university"))
+            if uni:
+                left_text(uni, bold=True, size=10, after=0)
+            parts = [p_ for p_ in [safe(edu.get("faculty")), safe(edu.get("speciality"))] if p_]
+            yr = safe(edu.get("year"))
+            if yr:
+                parts.append(yr)
+            if parts:
+                left_text(" · ".join(parts), size=8.5, color=GREY, after=0)
+            ach = safe(edu.get("achievements"))
+            if ach:
+                left_text(ach, size=8.5, after=0)
+            pdf.ln(4)
+
+    projects = []
+    for proj in (extra.get("projects") or []):
+        ps = safe(proj) if isinstance(proj, str) else safe(
+            (proj or {}).get("name") or (proj or {}).get("url") or
+            (proj or {}).get("title") or str(proj)
         )
+        if ps:
+            projects.append(ps)
 
-HTML_TEMPLATE = """\
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <title>Резюме</title>
-  <style>
-    /* ------------------------------------------------------------------ */
-    /* Reset & page setup                                                   */
-    /* ------------------------------------------------------------------ */
-    @page {{
-      size: A4;
-      margin: 18mm 18mm 18mm 18mm;
-    }}
-
-    * {{
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }}
-
-    body {{
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 10pt;
-      line-height: 1.45;
-      color: #1a1a2e;
-      background: #ffffff;
-      max-width: 210mm;
-    }}
-
-    /* ------------------------------------------------------------------ */
-    /* Header — personal block                                              */
-    /* ------------------------------------------------------------------ */
-    .header {{
-      border-bottom: 3px solid #1E3A5F;
-      padding-bottom: 12px;
-      margin-bottom: 18px;
-    }}
-
-    .header h1 {{
-      font-size: 22pt;
-      font-weight: 700;
-      color: #1E3A5F;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
-    }}
-
-    .header .meta {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px 20px;
-      font-size: 9pt;
-      color: #444;
-    }}
-
-    .header .meta span::before {{
-      content: "• ";
-      color: #1E3A5F;
-    }}
-
-    .header .about {{
-      margin-top: 8px;
-      font-size: 9.5pt;
-      color: #333;
-      font-style: italic;
-    }}
-
-    /* ------------------------------------------------------------------ */
-    /* Section headings                                                      */
-    /* ------------------------------------------------------------------ */
-    .section {{
-      margin-bottom: 16px;
-      page-break-inside: avoid;
-    }}
-
-    .section-title {{
-      font-size: 11pt;
-      font-weight: 700;
-      color: #1E3A5F;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      border-bottom: 1.5px solid #c8d8f0;
-      padding-bottom: 3px;
-      margin-bottom: 8px;
-    }}
-
-    /* ------------------------------------------------------------------ */
-    /* Education                                                             */
-    /* ------------------------------------------------------------------ */
-    .edu-item {{
-      margin-bottom: 8px;
-    }}
-
-    .edu-item .edu-name {{
-      font-weight: 700;
-      font-size: 10pt;
-    }}
-
-    .edu-item .edu-detail {{
-      font-size: 9pt;
-      color: #555;
-    }}
-
-    .edu-item .edu-achievements {{
-      font-size: 9pt;
-      color: #333;
-      margin-top: 2px;
-    }}
-
-    /* ------------------------------------------------------------------ */
-    /* Experience                                                            */
-    /* ------------------------------------------------------------------ */
-    .exp-item {{
-      margin-bottom: 10px;
-    }}
-
-    .exp-item .exp-title {{
-      font-weight: 700;
-      font-size: 10pt;
-      color: #1E3A5F;
-    }}
-
-    .exp-item .exp-role {{
-      font-size: 9.5pt;
-      color: #555;
-      margin-bottom: 2px;
-    }}
-
-    .exp-item .exp-desc {{
-      font-size: 9.5pt;
-      color: #333;
-    }}
-
-    .exp-item .exp-result {{
-      font-size: 9pt;
-      color: #1E3A5F;
-      font-weight: 600;
-      margin-top: 2px;
-    }}
-
-    /* ------------------------------------------------------------------ */
-    /* Skills                                                                */
-    /* ------------------------------------------------------------------ */
-    .skills-grid {{
-      display: flex;
-      gap: 24px;
-    }}
-
-    .skills-col {{
-      flex: 1;
-    }}
-
-    .skills-col h4 {{
-      font-size: 9.5pt;
-      font-weight: 700;
-      color: #444;
-      margin-bottom: 4px;
-    }}
-
-    .skill-tag {{
-      display: inline-block;
-      background: #eef3fb;
-      border: 1px solid #c8d8f0;
-      border-radius: 4px;
-      padding: 2px 7px;
-      font-size: 8.5pt;
-      color: #1E3A5F;
-      margin: 2px 3px 2px 0;
-    }}
-
-    /* ------------------------------------------------------------------ */
-    /* Languages                                                             */
-    /* ------------------------------------------------------------------ */
-    .lang-list {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }}
-
-    .lang-item {{
-      font-size: 9.5pt;
-      color: #333;
-    }}
-
-    .lang-item .lang-level {{
-      color: #888;
-      font-size: 9pt;
-    }}
-
-    /* ------------------------------------------------------------------ */
-    /* Extra                                                                  */
-    /* ------------------------------------------------------------------ */
-    .extra-projects {{
-      font-size: 9pt;
-      color: #1E3A5F;
-      margin-bottom: 4px;
-    }}
-
-    .extra-hobbies {{
-      font-size: 9pt;
-      color: #333;
-    }}
-
-    /* ------------------------------------------------------------------ */
-    /* Links                                                                 */
-    /* ------------------------------------------------------------------ */
-    a {{
-      color: #1E3A5F;
-      text-decoration: none;
-    }}
-  </style>
-</head>
-<body>
-
-  <!-- ================================================================== -->
-  <!-- HEADER                                                               -->
-  <!-- ================================================================== -->
-  <div class="header">
-    <h1>{name}</h1>
-    <div class="meta">
-      {city_span}
-      {phone_span}
-      {email_span}
-      {links_spans}
-    </div>
-    {about_block}
-  </div>
-
-  <!-- ================================================================== -->
-  <!-- EDUCATION                                                            -->
-  <!-- ================================================================== -->
-  {education_block}
-
-  <!-- ================================================================== -->
-  <!-- EXPERIENCE                                                           -->
-  <!-- ================================================================== -->
-  {experience_block}
-
-  <!-- ================================================================== -->
-  <!-- SKILLS                                                               -->
-  <!-- ================================================================== -->
-  {skills_block}
-
-  <!-- ================================================================== -->
-  <!-- LANGUAGES                                                            -->
-  <!-- ================================================================== -->
-  {languages_block}
-
-  <!-- ================================================================== -->
-  <!-- EXTRA                                                                -->
-  <!-- ================================================================== -->
-  {extra_block}
-
-</body>
-</html>
-"""
-
-
-def _safe(value, default: str = "") -> str:
-    """Return str(value) or default if value is None/empty."""
-    if value is None:
-        return default
-    s = str(value).strip()
-    return s if s else default
-
-
-def _esc(text: str) -> str:
-    """Basic HTML escaping for injected text content."""
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-
-
-def _build_personal(personal: dict) -> dict:
-    """Return substitution fragments for the header block."""
-    name = _esc(_safe(personal.get("name"), "Без имени"))
-    city = _safe(personal.get("city"))
-    phone = _safe(personal.get("phone"))
-    email = _safe(personal.get("email"))
-    links: list = personal.get("links") or []
-    about = _safe(personal.get("about"))
-
-    city_span = f"<span>{_esc(city)}</span>" if city else ""
-    phone_span = f"<span>{_esc(phone)}</span>" if phone else ""
-    email_span = f'<span><a href="mailto:{_esc(email)}">{_esc(email)}</a></span>' if email else ""
-
-    links_spans = ""
-    for link in links:
-        link_s = _safe(link)
-        if link_s:
-            links_spans += f'<span><a href="{_esc(link_s)}">{_esc(link_s)}</a></span>'
-
-    about_block = (
-        f'<div class="about">{_esc(about)}</div>' if about else ""
-    )
-
-    return {
-        "name": name,
-        "city_span": city_span,
-        "phone_span": phone_span,
-        "email_span": email_span,
-        "links_spans": links_spans,
-        "about_block": about_block,
-    }
-
-
-def _build_education(education: list) -> str:
-    if not education:
-        return ""
-    items_html = ""
-    for edu in education:
-        university = _esc(_safe(edu.get("university")))
-        faculty = _esc(_safe(edu.get("faculty")))
-        speciality = _esc(_safe(edu.get("speciality")))
-        year = _esc(_safe(edu.get("year")))
-        achievements = _esc(_safe(edu.get("achievements")))
-
-        detail_parts = []
-        if faculty:
-            detail_parts.append(faculty)
-        if speciality:
-            detail_parts.append(speciality)
-        if year:
-            detail_parts.append(f"Выпуск {year}")
-
-        detail_str = " &nbsp;·&nbsp; ".join(detail_parts) if detail_parts else ""
-        achievements_str = (
-            f'<div class="edu-achievements">✦ {achievements}</div>'
-            if achievements
-            else ""
-        )
-
-        items_html += f"""
-        <div class="edu-item">
-          <div class="edu-name">{university}</div>
-          {f'<div class="edu-detail">{detail_str}</div>' if detail_str else ''}
-          {achievements_str}
-        </div>"""
-
-    return f"""
-    <div class="section">
-      <div class="section-title">Образование</div>
-      {items_html}
-    </div>"""
-
-
-def _build_experience(experience: list) -> str:
-    if not experience:
-        return ""
-    items_html = ""
-    for exp in experience:
-        title = _esc(_safe(exp.get("title")))
-        role = _esc(_safe(exp.get("role")))
-        description = _esc(_safe(exp.get("description")))
-        result = _esc(_safe(exp.get("result")))
-
-        items_html += f"""
-        <div class="exp-item">
-          <div class="exp-title">{title}</div>
-          {f'<div class="exp-role">{role}</div>' if role else ''}
-          {f'<div class="exp-desc">{description}</div>' if description else ''}
-          {f'<div class="exp-result">Результат: {result}</div>' if result else ''}
-        </div>"""
-
-    return f"""
-    <div class="section">
-      <div class="section-title">Опыт и проекты</div>
-      {items_html}
-    </div>"""
-
-
-def _build_skills(skills: dict) -> str:
-    if not skills:
-        return ""
-    hard: list = skills.get("hard") or []
-    soft: list = skills.get("soft") or []
-    if not hard and not soft:
-        return ""
-
-    hard_tags = "".join(
-        f'<span class="skill-tag">{_esc(str(s))}</span>' for s in hard
-    )
-    soft_tags = "".join(
-        f'<span class="skill-tag">{_esc(str(s))}</span>' for s in soft
-    )
-
-    hard_col = (
-        f'<div class="skills-col"><h4>Hard skills</h4>{hard_tags}</div>'
-        if hard
-        else ""
-    )
-    soft_col = (
-        f'<div class="skills-col"><h4>Soft skills</h4>{soft_tags}</div>'
-        if soft
-        else ""
-    )
-
-    return f"""
-    <div class="section">
-      <div class="section-title">Навыки</div>
-      <div class="skills-grid">
-        {hard_col}
-        {soft_col}
-      </div>
-    </div>"""
-
-
-def _build_languages(languages: list) -> str:
-    if not languages:
-        return ""
-    items = ""
-    for lang in languages:
-        language = _esc(_safe(lang.get("language")))
-        level = _esc(_safe(lang.get("level")))
-        if language:
-            level_part = f' <span class="lang-level">({level})</span>' if level else ""
-            items += f'<div class="lang-item">{language}{level_part}</div>'
-
-    if not items:
-        return ""
-
-    return f"""
-    <div class="section">
-      <div class="section-title">Языки</div>
-      <div class="lang-list">{items}</div>
-    </div>"""
-
-
-def _build_extra(extra: dict) -> str:
-    if not extra:
-        return ""
-    projects: list = extra.get("projects") or []
-    hobbies = _safe(extra.get("hobbies"))
-    if not projects and not hobbies:
-        return ""
-
-    projects_html = ""
     if projects:
-        project_links = ""
-        for p in projects:
-            p_s = _safe(p)
-            if p_s:
-                project_links += f'<div class="extra-projects"><a href="{_esc(p_s)}">{_esc(p_s)}</a></div>'
-        if project_links:
-            projects_html = f"<div><strong>Проекты:</strong><br>{project_links}</div>"
+        left_sec("Проекты")
+        for ps in projects:
+            left_text(ps, size=9, after=2)
 
-    hobbies_html = (
-        f'<div class="extra-hobbies"><strong>Хобби:</strong> {_esc(hobbies)}</div>'
-        if hobbies
-        else ""
-    )
+    if experience:
+        left_sec("Опыт и участие")
+        for exp in experience:
+            title_ = safe(exp.get("title"))
+            if title_:
+                left_text(title_, bold=True, size=10, color=DARK, after=0)
+            role = safe(exp.get("role"))
+            if role:
+                left_text(role, size=8.5, color=GREY, after=0)
+            desc = safe(exp.get("description"))
+            if desc:
+                left_text(desc, size=9, after=0)
+            result = safe(exp.get("result"))
+            if result:
+                left_text(f"Результат: {result}", size=9, bold=True, color=DARK, after=0)
+            pdf.ln(4)
 
-    return f"""
-    <div class="section">
-      <div class="section-title">Дополнительно</div>
-      {projects_html}
-      {hobbies_html}
-    </div>"""
+    hobbies = safe(extra.get("hobbies"))
+    if hobbies:
+        left_sec("Дополнительная информация")
+        left_text(hobbies, size=9, after=0)
 
+    left_end_y = pdf.get_y()
+
+    # ── RIGHT COLUMN ─────────────────────────────────────────────────────────
+    if hard or soft:
+        right_sec("Навыки")
+        for sk in hard:
+            right_line(f"• {sk}", size=9)
+        if hard and soft:
+            r_y += 2
+        for sk in soft:
+            right_line(f"• {sk}", size=9, color=GREY)
+        r_y += 3
+
+    if languages:
+        right_sec("Языки")
+        for lang in languages:
+            lng = safe(lang.get("language"))
+            lvl = safe(lang.get("level"))
+            if lng:
+                right_line(f"{lng}{f' ({lvl})' if lvl else ''}", size=9)
+
+    pdf.set_y(max(left_end_y, r_y))
+    return bytes(pdf.output())
+
+
+# ---------------------------------------------------------------------------
+# WeasyPrint path (Linux/Mac prod) — kept for HTML rendering
+# ---------------------------------------------------------------------------
+
+def _render_weasyprint(html: str) -> bytes:
+    from weasyprint import HTML as _W
+    return _W(string=html).write_pdf()  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def generate_pdf(resume_data: dict) -> bytes:
-    """
-    Render *resume_data* (matching the ResumeData JSON schema from the brief)
-    into an A4-sized PDF and return the raw PDF bytes.
-    """
-    personal: dict = resume_data.get("personal") or {}
-    education: list = resume_data.get("education") or []
-    experience: list = resume_data.get("experience") or []
-    skills: dict = resume_data.get("skills") or {}
-    languages: list = resume_data.get("languages") or []
-    extra: dict = resume_data.get("extra") or {}
+    try:
+        return _render_weasyprint(_build_html(resume_data))
+    except Exception:
+        return _build_fpdf(resume_data)
 
-    personal_parts = _build_personal(personal)
-    education_block = _build_education(education)
-    experience_block = _build_experience(experience)
-    skills_block = _build_skills(skills)
-    languages_block = _build_languages(languages)
-    extra_block = _build_extra(extra)
 
-    html_content = HTML_TEMPLATE.format(
-        **personal_parts,
-        education_block=education_block,
-        experience_block=experience_block,
-        skills_block=skills_block,
-        languages_block=languages_block,
-        extra_block=extra_block,
-    )
+# ---------------------------------------------------------------------------
+# HTML template (WeasyPrint, Linux prod)
+# ---------------------------------------------------------------------------
 
-    return _render_pdf(html_content)
+def _build_html(resume_data: dict) -> str:
+    p        = resume_data.get("personal") or {}
+    education = resume_data.get("education") or []
+    experience = resume_data.get("experience") or []
+    skills   = resume_data.get("skills") or {}
+    languages = resume_data.get("languages") or []
+    extra    = resume_data.get("extra") or {}
+
+    def s(v, d=""): return str(v).strip() if v else d
+    def e(t): return t.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
+
+    name = e(s(p.get("name"), "Без имени"))
+    contact = []
+    if s(p.get("city")): contact.append(e(s(p["city"])))
+    if s(p.get("phone")): contact.append(e(s(p["phone"])))
+    if s(p.get("email")): contact.append(f'<a href="mailto:{e(s(p["email"]))}">{e(s(p["email"]))}</a>')
+    for lnk in (p.get("links") or []):
+        ls = s(lnk)
+        if ls: contact.append(f'<a href="{e(ls)}">{e(ls)}</a>')
+    contact_html = "<br>".join(contact)
+    about_html = f'<p class="about">{e(s(p.get("about")))}</p>' if s(p.get("about")) else ""
+
+    def edu_html():
+        if not education: return ""
+        items = ""
+        for edu in education:
+            uni = e(s(edu.get("university")))
+            dets = " · ".join(filter(None,[e(s(edu.get("faculty"))),e(s(edu.get("speciality"))),s(edu.get("year"))]))
+            ach = e(s(edu.get("achievements")))
+            items += f'<div class="item"><b>{uni}</b>{f"<br><span class=d>{dets}</span>" if dets else ""}{f"<br><span class=d>✦ {ach}</span>" if ach else ""}</div>'
+        return f'<div class="sec"><div class="sec-t">Образование</div>{items}</div>'
+
+    def exp_html():
+        if not experience: return ""
+        items = ""
+        for exp in experience:
+            t_=e(s(exp.get("title"))); r_=e(s(exp.get("role"))); d_=e(s(exp.get("description"))); rs=e(s(exp.get("result")))
+            items += f'<div class="item"><b style="color:#1E3A5F">{t_}</b>{f"<br><span class=d>{r_}</span>" if r_ else ""}{f"<br>{d_}" if d_ else ""}{f"<br><b>Результат: {rs}</b>" if rs else ""}</div>'
+        return f'<div class="sec"><div class="sec-t">Опыт и участие</div>{items}</div>'
+
+    def proj_html():
+        ps = []
+        for proj in (extra.get("projects") or []):
+            pst = s(proj) if isinstance(proj,str) else s((proj or {}).get("name") or (proj or {}).get("url") or str(proj))
+            if pst: ps.append(pst)
+        if not ps: return ""
+        items = "".join(f'<div class="item">{e(p_)}</div>' for p_ in ps)
+        return f'<div class="sec"><div class="sec-t">Проекты</div>{items}</div>'
+
+    def hob_html():
+        hob = s(extra.get("hobbies"))
+        if not hob: return ""
+        return f'<div class="sec"><div class="sec-t">Дополнительно</div><div class="item">{e(hob)}</div></div>'
+
+    def skills_html():
+        hard=[s(x) for x in (skills.get("hard") or []) if s(x)]
+        soft=[s(x) for x in (skills.get("soft") or []) if s(x)]
+        if not hard and not soft: return ""
+        rows = "".join(f"<div>• {e(sk)}</div>" for sk in hard+soft)
+        return f'<div class="sec"><div class="sec-t">Навыки</div>{rows}</div>'
+
+    def lang_html():
+        if not languages: return ""
+        rows = ""
+        for lang in languages:
+            lg=e(s(lang.get("language"))); lv=e(s(lang.get("level")))
+            if lg: rows += f"<div>{lg}{f' ({lv})' if lv else ''}</div>"
+        return f'<div class="sec"><div class="sec-t">Языки</div>{rows}</div>' if rows else ""
+
+    return f"""<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"/>
+<style>
+@page{{size:A4;margin:16mm}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:Arial,sans-serif;font-size:9.5pt;line-height:1.45;color:#191919}}
+.header{{display:grid;grid-template-columns:62% 38%;gap:0;border-bottom:2px solid #ccc;padding-bottom:10px;margin-bottom:14px}}
+.h-name{{font-size:21pt;font-weight:700;color:#111;line-height:1.1}}
+.about{{font-size:9pt;color:#333;margin-top:6px}}
+.h-contact{{font-size:8.5pt;color:#555;text-align:right;line-height:1.7}}
+.h-contact a{{color:#555;text-decoration:none}}
+.layout{{display:grid;grid-template-columns:62% 38%;gap:0 7mm}}
+.sec{{margin-bottom:14px;page-break-inside:avoid}}
+.sec-t{{font-size:9.5pt;font-weight:700;color:#aa1919;text-transform:uppercase;border-bottom:1px solid #ddd;padding-bottom:2px;margin-bottom:6px}}
+.item{{margin-bottom:7px;font-size:9pt}}.d{{color:#666;font-size:8.5pt}}
+a{{color:#1E3A5F;text-decoration:none}}
+</style></head><body>
+<div class="header">
+  <div><div class="h-name">{name}</div>{about_html}</div>
+  <div class="h-contact">{contact_html}</div>
+</div>
+<div class="layout">
+  <div>{edu_html()}{proj_html()}{exp_html()}{hob_html()}</div>
+  <div>{skills_html()}{lang_html()}</div>
+</div>
+</body></html>"""

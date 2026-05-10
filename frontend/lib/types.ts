@@ -1,3 +1,11 @@
+export interface EducationItem {
+  university: string
+  faculty: string
+  speciality: string
+  year: string
+  achievements: string
+}
+
 export interface Profile {
   name?: string
   city?: string
@@ -10,6 +18,8 @@ export interface Profile {
   speciality?: string
   graduation_year?: string
   languages?: { language: string; level: string }[]
+  links?: string[]
+  education_list?: EducationItem[]
 }
 
 export interface Session {

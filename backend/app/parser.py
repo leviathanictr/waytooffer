@@ -33,7 +33,7 @@ def parse_vacancy(url: str) -> dict:
         return _FALLBACK.copy()
 
     try:
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(response.content, "html.parser")
 
         # ------------------------------------------------------------------ #
         # hh.ru                                                                #

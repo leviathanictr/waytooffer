@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const PROTECTED_PATHS = ['/', '/history', '/settings']
-const AUTH_PATHS = ['/login', '/register']
+const AUTH_PATHS = ['/login', '/register', '/verify']
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const hasSession = request.cookies.get('wto_has_session')?.value === '1'
 
@@ -24,5 +24,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/history', '/settings', '/login', '/register'],
+  matcher: ['/', '/history', '/settings', '/login', '/register', '/verify'],
 }

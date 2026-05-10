@@ -32,6 +32,8 @@ class RegisterRequest(BaseModel):
     def password_min_length(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password must be no longer than 72 characters")
         return v
 
 
@@ -69,6 +71,8 @@ class ChangePasswordRequest(BaseModel):
     def new_password_min_length(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("New password must be at least 8 characters")
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("New password must be no longer than 72 characters")
         return v
 
 
@@ -86,6 +90,14 @@ class ChangePhoneRequest(BaseModel):
 # Profile
 # ---------------------------------------------------------------------------
 
+class EducationItem(BaseModel):
+    university: str = ""
+    faculty: str = ""
+    speciality: str = ""
+    year: str = ""
+    achievements: str = ""
+
+
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
     city: Optional[str] = None
@@ -98,6 +110,8 @@ class ProfileUpdate(BaseModel):
     speciality: Optional[str] = None
     graduation_year: Optional[str] = None
     languages: Optional[List[LanguageItem]] = None
+    links: Optional[List[str]] = None
+    education_list: Optional[List[EducationItem]] = None
 
 
 class ProfileResponse(BaseModel):
@@ -114,6 +128,8 @@ class ProfileResponse(BaseModel):
     speciality: Optional[str] = None
     graduation_year: Optional[str] = None
     languages: Optional[List[LanguageItem]] = None
+    links: Optional[List[str]] = None
+    education_list: Optional[List[EducationItem]] = None
 
 
 # ---------------------------------------------------------------------------

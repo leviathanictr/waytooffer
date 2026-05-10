@@ -27,8 +27,10 @@ CHAT_SYSTEM_PROMPT = """\
 Постоянные данные кандидата (уже известны, НЕ спрашивай их повторно):
 {user_profile}
 
+{github_context}
+
 АЛГОРИТМ:
-1. Поздоровайся и кратко объясни процесс (1 сообщение).
+1. НЕ приветствуй — кандидат уже видел вводное сообщение. Сразу задавай первый вопрос.
 2. Задавай строго по ОДНОМУ вопросу за раз.
 3. Порядок сбора данных:
    - Опыт: проекты, хакатоны, чемпионаты, стажировки — всё что не указано в профиле
@@ -39,7 +41,7 @@ CHAT_SYSTEM_PROMPT = """\
    Верни JSON: {{"status": "complete", "data": {{<все собранные данные>}}}}
 
 СТИЛЬ: дружелюбный, конкретный, без воды. Не задавай несколько вопросов сразу.
-ВАЖНО: не выдумывай данные. Если кандидат чего-то не знает — пропускай.\
+ВАЖНО: НЕ выдумывай данные (курсы, предметы, достижения). Используй ТОЛЬКО то, что сказал кандидат.\
 """
 
 GENERATE_PROMPT = """\
@@ -61,6 +63,20 @@ GENERATE_PROMPT = """\
 8. Опыт — от самого релевантного к наименее.
 9. IT-вакансия → акцент на технических навыках. Бизнес → акцент на софт-скиллах.
 
+БАЛАНС РЕАЛЬНОСТЬ / ТВОРЧЕСТВО:
+Строго фактическое (80%) — НЕ выдумывать:
+  имена, даты, места в чемпионатах, названия компаний / вузов, конкретные цифры,
+  технологии не упомянутые кандидатом, названия курсов и сертификатов.
+
+Допустимое обогащение (~20%) — только то, что нельзя проверить фактически:
+  • Стиль и глаголы: усиляй формулировки ("участвовал" → "разработал совместно с командой"),
+    добавляй профессиональные глаголы действия.
+  • Общие soft skills ("ответственность", "инициативность", "обучаемость") — если вписываются
+    в контекст.
+  • Краткое описание роли в проекте — если кандидат упомянул проект, но не описал детали.
+
+Главное правило: не добавляй ничего, что кандидат мог бы опровергнуть на собеседовании.
+
 ФОРМАТ: верни ТОЛЬКО валидный JSON без markdown-обёртки и пояснений:
 {{
   "personal": {{"name": "", "city": "", "phone": "", "email": "", "links": [], "about": ""}},
@@ -68,7 +84,7 @@ GENERATE_PROMPT = """\
   "experience": [{{"title": "", "role": "", "description": "", "result": ""}}],
   "skills": {{"hard": [], "soft": []}},
   "languages": [{{"language": "", "level": ""}}],
-  "extra": {{"projects": [], "hobbies": ""}}
+  "extra": {{"projects": ["строка: URL или название проекта"], "hobbies": ""}}
 }}\
 """
 
@@ -94,6 +110,13 @@ def profile_to_str(profile: models.Profile | None) -> str:
     add("Email", profile.email)
     add("Ссылка hh.ru", profile.link_hh)
     add("Портфолио / GitHub", profile.link_portfolio)
+    try:
+        extra_links = json.loads(profile.links or "[]")
+        for lnk in extra_links:
+            if lnk:
+                lines.append(f"- Ссылка: {lnk}")
+    except Exception:
+        pass
     add("Вуз", profile.university)
     add("Факультет", profile.faculty)
     add("Специальность", profile.speciality)
@@ -111,6 +134,50 @@ def profile_to_str(profile: models.Profile | None) -> str:
             pass
 
     return "\n".join(lines) if lines else "Данные профиля не заполнены."
+
+
+def _fetch_github_context(profile: models.Profile | None) -> str:
+    """Fetch real GitHub repo list if profile has a GitHub link."""
+    if not profile:
+        return ""
+    import re
+    import requests as _req
+
+    github_url = None
+    candidates = [profile.link_portfolio or ""]
+    try:
+        extra = json.loads(profile.links or "[]")
+        candidates += [str(u) for u in extra]
+    except Exception:
+        pass
+
+    for url in candidates:
+        if "github.com" in url:
+            github_url = url
+            break
+
+    if not github_url:
+        return ""
+
+    m = re.search(r"github\.com/([^/?#]+)", github_url)
+    if not m:
+        return ""
+    username = m.group(1)
+
+    try:
+        resp = _req.get(
+            f"https://api.github.com/users/{username}/repos?per_page=20&sort=updated",
+            headers={"Accept": "application/vnd.github.v3+json"},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            repos = resp.json()
+            names = [r["name"] for r in repos if r.get("name") and not r.get("fork")][:12]
+            if names:
+                return f"Реальные репозитории GitHub кандидата ({username}): {', '.join(names)}\nИспользуй эти названия в резюме — они реальные."
+    except Exception:
+        pass
+    return ""
 
 
 def _extract_vacancy_requirements(vacancy_text: str) -> str:
@@ -188,11 +255,13 @@ def chat_response(session_id: str, user_message: str, db: DBSession) -> dict:
     vacancy_text = session.vacancy_text or "Описание вакансии не предоставлено."
     vacancy_requirements = _extract_vacancy_requirements(vacancy_text)
     user_profile_str = profile_to_str(profile)
+    github_context = _fetch_github_context(profile)
 
     system_content = CHAT_SYSTEM_PROMPT.format(
         vacancy_text=vacancy_text,
         vacancy_requirements=vacancy_requirements,
         user_profile=user_profile_str,
+        github_context=github_context,
     )
 
     messages = [{"role": "system", "content": system_content}]

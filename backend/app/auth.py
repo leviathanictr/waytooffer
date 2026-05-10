@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.orm import Session as DBSession
 
 from app.database import get_db
@@ -18,7 +18,6 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 30       # minutes
 REFRESH_TOKEN_EXPIRE = 30      # days
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
@@ -26,12 +25,31 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 # Password helpers
 # ---------------------------------------------------------------------------
 
+_BCRYPT_MAX_BYTES = 72
+
+
+def _truncate(plain: str) -> str:
+    """bcrypt silently truncates or raises on passwords > 72 bytes. Truncate explicitly."""
+    encoded = plain.encode("utf-8")
+    if len(encoded) > _BCRYPT_MAX_BYTES:
+        encoded = encoded[:_BCRYPT_MAX_BYTES]
+    return encoded.decode("utf-8", errors="ignore")
+
+
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(_truncate(plain).encode("utf-8"), salt)
+    return hashed.decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(
+            _truncate(plain).encode("utf-8"),
+            hashed.encode("utf-8")
+        )
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------

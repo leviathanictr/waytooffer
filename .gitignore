@@ -39,3 +39,8 @@ Thumbs.db
 .env
 .env.*
 !*.env.example
+!frontend/.env.local.example
+
+# ── Docker volumes ─────────────────────────────────────────────────────────────
+data/
+nginx/ssl/

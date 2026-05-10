@@ -89,9 +89,9 @@ def send_sms_code(phone: str, code: str) -> None:
       fmt         — 3 (JSON response)
       sender      — alphanumeric name shown to recipient (optional, must be pre-registered)
     """
+    print(f"[DEV] SMS code for {phone}: {code}")
     creds = _smsc_credentials()
     if creds is None:
-        print(f"[DEV] SMS code for {phone}: {code}")
         return
 
     login, password = creds
@@ -106,9 +106,11 @@ def send_sms_code(phone: str, code: str) -> None:
         "fmt": 3,  # JSON response
     }
 
-    sender = os.getenv("SMSC_SENDER", "").strip()
-    if sender:
-        params["sender"] = sender
+    # Убрали передачу sender="WayToOffer", чтобы SMSC.ru использовал дефолтное имя
+    # и не отклонял сообщения с ошибкой 6 (message is denied)
+    # sender = os.getenv("SMSC_SENDER", "").strip()
+    # if sender:
+    #     params["sender"] = sender
 
     try:
         resp = requests.get(SMSC_API_URL, params=params, timeout=10)
@@ -120,26 +122,25 @@ def send_sms_code(phone: str, code: str) -> None:
         print(f"[ERROR] Failed to send SMS to {phone}: {exc}")
 
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 def send_email_code(email: str, code: str) -> None:
     """
-    Send verification email via SMSC.ru HTTP API (mail=1 mode).
-    If SMSC_LOGIN / SMSC_PASSWORD are not set, prints code to console (dev mode).
-
-    SMSC.ru endpoint: GET https://smsc.ru/sys/send.php
-    Extra parameters for email mode:
-      mail=1      — enables email sending
-      subj        — email subject
-      phones      — recipient email address
-      mes         — plain-text body
-      charset     — utf-8
-      fmt         — 3 (JSON response)
+    Отправка email через SMTP (Google/Yandex/др.).
     """
-    creds = _smsc_credentials()
-    if creds is None:
-        print(f"[DEV] Email code for {email}: {code}")
+    print(f"[DEV] Email code for {email}: {code}")
+    
+    smtp_server = os.getenv("SMTP_SERVER", "").strip()
+    smtp_port = os.getenv("SMTP_PORT", "465").strip()
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
+    
+    if not smtp_server or not smtp_user or not smtp_pass:
+        print("[DEV] SMTP credentials not fully configured. Email not sent.")
         return
 
-    login, password = creds
     subject = "Ваш код подтверждения — WayToOffer"
     body = (
         f"Привет!\n\n"
@@ -149,22 +150,17 @@ def send_email_code(email: str, code: str) -> None:
         f"Если вы не запрашивали код — проигнорируйте это письмо."
     )
 
-    params: dict = {
-        "login": login,
-        "psw": password,
-        "phones": email,
-        "mes": body,
-        "subj": subject,
-        "mail": 1,
-        "charset": "utf-8",
-        "fmt": 3,  # JSON response
-    }
+    msg = MIMEMultipart()
+    msg["From"] = f"WayToOffer <{smtp_user}>"
+    msg["To"] = email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain", "utf-8"))
 
     try:
-        resp = requests.get(SMSC_API_URL, params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        if "error_code" in data:
-            print(f"[ERROR] SMSC.ru email error {data['error_code']}: {data.get('error')}")
+        # Яндекс Почта: SSL, порт 465
+        server = smtplib.SMTP_SSL(smtp_server, int(smtp_port), timeout=10)
+        server.login(smtp_user, smtp_pass)
+        server.sendmail(smtp_user, email, msg.as_string())
+        server.quit()
     except Exception as exc:
-        print(f"[ERROR] Failed to send email to {email}: {exc}")
+        print(f"[ERROR] Failed to send email via SMTP to {email}: {exc}")

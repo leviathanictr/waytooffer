@@ -47,7 +47,9 @@ class Profile(Base):
     faculty = Column(String, nullable=True)
     speciality = Column(String, nullable=True)
     graduation_year = Column(String, nullable=True)
-    languages = Column(Text, nullable=True)  # JSON string
+    languages = Column(Text, nullable=True)       # JSON: [{language, level}]
+    links = Column(Text, nullable=True)           # JSON: ["url", ...]
+    education_list = Column(Text, nullable=True)  # JSON: [{university, faculty, speciality, year, achievements}]
 
 
 class Session(Base):

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#b026f5"/>
+      <stop offset="100%" stop-color="#2acfea"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Back document (rotated ~13°) -->
+  <g transform="translate(256,256) rotate(13) translate(-256,-256)">
+    <path d="M 185 68 L 375 68 Q 392 68 392 85 L 392 435 Q 392 452 375 452 L 185 452 Q 168 452 168 435 L 168 85 Q 168 68 185 68 Z"
+          fill="white" stroke="url(#g)" stroke-width="22" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Front document -->
+  <path d="M 108 82 L 295 82 L 350 137 L 350 445 Q 350 462 333 462 L 108 462 Q 91 462 91 445 L 91 99 Q 91 82 108 82 Z"
+        fill="white" stroke="url(#g)" stroke-width="22" stroke-linejoin="round"/>
+
+  <!-- Corner fold -->
+  <path d="M 295 82 L 295 137 L 350 137"
+        fill="none" stroke="url(#g)" stroke-width="22"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Text lines -->
+  <line x1="130" y1="196" x2="318" y2="196" stroke="url(#g)" stroke-width="19" stroke-linecap="round"/>
+  <line x1="130" y1="242" x2="318" y2="242" stroke="url(#g)" stroke-width="19" stroke-linecap="round"/>
+  <line x1="130" y1="288" x2="318" y2="288" stroke="url(#g)" stroke-width="19" stroke-linecap="round"/>
+  <line x1="130" y1="334" x2="318" y2="334" stroke="url(#g)" stroke-width="19" stroke-linecap="round"/>
+  <line x1="130" y1="380" x2="255" y2="380" stroke="url(#g)" stroke-width="19" stroke-linecap="round"/>
+  <line x1="130" y1="424" x2="210" y2="424" stroke="url(#g)" stroke-width="19" stroke-linecap="round"/>
+</svg>

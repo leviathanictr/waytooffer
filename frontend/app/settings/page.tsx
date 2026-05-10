@@ -11,46 +11,34 @@ import { Separator } from '@/components/ui/separator'
 import { profile as profileApi, auth } from '@/lib/api'
 import { isAuthenticated } from '@/lib/auth'
 import { Plus, Trash2, Loader2 } from 'lucide-react'
-import type { Profile } from '@/lib/types'
+import type { Profile, EducationItem } from '@/lib/types'
 
 const LANGUAGE_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'Родной']
+const emptyEdu = (): EducationItem => ({ university: '', faculty: '', speciality: '', year: '', achievements: '' })
 
 export default function SettingsPage() {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<string>('profile')
-
-  // Profile state
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileSaving, setProfileSaving] = useState(false)
   const [form, setForm] = useState<Profile>({
     name: '', city: '', phone: '', email: '',
     link_hh: '', link_portfolio: '',
     university: '', faculty: '', speciality: '', graduation_year: '',
-    languages: [],
+    languages: [], links: [], education_list: [],
   })
-
-  // Password state
-  const [passwordForm, setPasswordForm] = useState({
-    old_password: '', new_password: '', new_password_confirm: '',
-  })
+  const [passwordForm, setPasswordForm] = useState({ old_password: '', new_password: '', new_password_confirm: '' })
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [passwordError, setPasswordError] = useState('')
-
-  // Email state
   const [emailForm, setEmailForm] = useState({ new_email: '', password: '' })
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError] = useState('')
-
-  // Phone state
   const [phoneForm, setPhoneForm] = useState({ new_phone: '+7', password: '' })
   const [phoneLoading, setPhoneLoading] = useState(false)
   const [phoneError, setPhoneError] = useState('')
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push('/login')
-      return
-    }
+    if (!isAuthenticated()) { router.push('/login'); return }
     loadProfile()
   }, [router])
 
@@ -59,263 +47,175 @@ export default function SettingsPage() {
     try {
       const { data } = await profileApi.get()
       setForm({
-        name: data.name || '',
-        city: data.city || '',
-        phone: data.phone || '',
-        email: data.email || '',
-        link_hh: data.link_hh || '',
-        link_portfolio: data.link_portfolio || '',
-        university: data.university || '',
-        faculty: data.faculty || '',
-        speciality: data.speciality || '',
-        graduation_year: data.graduation_year || '',
+        name: data.name || '', city: data.city || '',
+        phone: data.phone || '', email: data.email || '',
+        link_hh: data.link_hh || '', link_portfolio: data.link_portfolio || '',
+        university: data.university || '', faculty: data.faculty || '',
+        speciality: data.speciality || '', graduation_year: data.graduation_year || '',
         languages: data.languages || [],
+        links: data.links || [],
+        education_list: data.education_list || [],
       })
-    } catch {
-      toast.error('Не удалось загрузить профиль')
-    } finally {
-      setProfileLoading(false)
-    }
+    } catch { toast.error('Не удалось загрузить профиль') }
+    finally { setProfileLoading(false) }
   }
 
   async function handleSaveProfile() {
     setProfileSaving(true)
-    try {
-      await profileApi.update(form)
-      toast.success('Данные сохранены!')
-    } catch {
-      toast.error('Ошибка сохранения данных')
-    } finally {
-      setProfileSaving(false)
-    }
+    try { await profileApi.update(form); toast.success('Данные сохранены!') }
+    catch { toast.error('Ошибка сохранения данных') }
+    finally { setProfileSaving(false) }
   }
 
-  function addLanguage() {
-    setForm(f => ({ ...f, languages: [...(f.languages || []), { language: '', level: 'B1' }] }))
-  }
+  const addLanguage = () => setForm(f => ({ ...f, languages: [...(f.languages || []), { language: '', level: 'B1' }] }))
+  const removeLanguage = (i: number) => setForm(f => ({ ...f, languages: (f.languages || []).filter((_, idx) => idx !== i) }))
+  const updateLanguage = (i: number, field: 'language' | 'level', val: string) =>
+    setForm(f => ({ ...f, languages: (f.languages || []).map((l, idx) => idx === i ? { ...l, [field]: val } : l) }))
 
-  function removeLanguage(index: number) {
-    setForm(f => ({ ...f, languages: (f.languages || []).filter((_, i) => i !== index) }))
-  }
+  const addLink = () => setForm(f => ({ ...f, links: [...(f.links || []), ''] }))
+  const removeLink = (i: number) => setForm(f => ({ ...f, links: (f.links || []).filter((_, idx) => idx !== i) }))
+  const updateLink = (i: number, val: string) => setForm(f => ({ ...f, links: (f.links || []).map((l, idx) => idx === i ? val : l) }))
 
-  function updateLanguage(index: number, field: 'language' | 'level', value: string) {
-    setForm(f => ({
-      ...f,
-      languages: (f.languages || []).map((lang, i) => i === index ? { ...lang, [field]: value } : lang),
-    }))
-  }
+  const addEdu = () => setForm(f => ({ ...f, education_list: [...(f.education_list || []), emptyEdu()] }))
+  const removeEdu = (i: number) => setForm(f => ({ ...f, education_list: (f.education_list || []).filter((_, idx) => idx !== i) }))
+  const updateEdu = (i: number, field: keyof EducationItem, val: string) =>
+    setForm(f => ({ ...f, education_list: (f.education_list || []).map((e, idx) => idx === i ? { ...e, [field]: val } : e) }))
 
   async function handleChangePassword(e: React.FormEvent) {
-    e.preventDefault()
-    setPasswordError('')
-    if (passwordForm.new_password.length < 8) {
-      setPasswordError('Новый пароль должен содержать минимум 8 символов')
-      return
-    }
-    if (passwordForm.new_password !== passwordForm.new_password_confirm) {
-      setPasswordError('Пароли не совпадают')
-      return
-    }
+    e.preventDefault(); setPasswordError('')
+    if (passwordForm.new_password.length < 8) { setPasswordError('Минимум 8 символов'); return }
+    if (passwordForm.new_password !== passwordForm.new_password_confirm) { setPasswordError('Пароли не совпадают'); return }
     setPasswordLoading(true)
-    try {
-      await auth.changePassword(passwordForm)
-      toast.success('Пароль успешно изменён!')
-      setPasswordForm({ old_password: '', new_password: '', new_password_confirm: '' })
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setPasswordError(detail || 'Неверный текущий пароль')
-    } finally {
-      setPasswordLoading(false)
-    }
+    try { await auth.changePassword(passwordForm); toast.success('Пароль изменён!'); setPasswordForm({ old_password: '', new_password: '', new_password_confirm: '' }) }
+    catch (err: unknown) {
+      const raw = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+      setPasswordError((Array.isArray(raw) ? raw[0]?.msg : raw as string) || 'Неверный текущий пароль')
+    } finally { setPasswordLoading(false) }
   }
 
   async function handleChangeEmail(e: React.FormEvent) {
-    e.preventDefault()
-    setEmailError('')
-    if (!emailForm.new_email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-      setEmailError('Введите корректный email')
-      return
-    }
+    e.preventDefault(); setEmailError('')
+    if (!emailForm.new_email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { setEmailError('Введите корректный email'); return }
     setEmailLoading(true)
-    try {
-      await auth.changeEmail(emailForm)
-      toast.success('Email успешно изменён!')
-      setEmailForm({ new_email: '', password: '' })
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setEmailError(detail || 'Ошибка изменения email')
-    } finally {
-      setEmailLoading(false)
-    }
+    try { await auth.changeEmail(emailForm); toast.success('Email изменён!'); setEmailForm({ new_email: '', password: '' }) }
+    catch (err: unknown) {
+      const raw = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+      setEmailError((Array.isArray(raw) ? raw[0]?.msg : raw as string) || 'Ошибка')
+    } finally { setEmailLoading(false) }
   }
 
   async function handleChangePhone(e: React.FormEvent) {
-    e.preventDefault()
-    setPhoneError('')
-    if (!phoneForm.new_phone.match(/^\+7\d{10}$/)) {
-      setPhoneError('Введите номер в формате +7XXXXXXXXXX')
-      return
-    }
+    e.preventDefault(); setPhoneError('')
+    if (!phoneForm.new_phone.match(/^\+7\d{10}$/)) { setPhoneError('Формат: +7XXXXXXXXXX'); return }
     setPhoneLoading(true)
-    try {
-      await auth.changePhone(phoneForm)
-      toast.success('Телефон успешно изменён!')
-      setPhoneForm({ new_phone: '+7', password: '' })
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setPhoneError(detail || 'Ошибка изменения телефона')
-    } finally {
-      setPhoneLoading(false)
-    }
+    try { await auth.changePhone(phoneForm); toast.success('Телефон изменён!'); setPhoneForm({ new_phone: '+7', password: '' }) }
+    catch (err: unknown) {
+      const raw = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+      setPhoneError((Array.isArray(raw) ? raw[0]?.msg : raw as string) || 'Ошибка')
+    } finally { setPhoneLoading(false) }
   }
 
   return (
     <div className="flex-1 py-6 px-4">
       <div className="max-w-lg mx-auto">
         <h1 className="text-2xl font-bold mb-6">Настройки</h1>
-
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(String(v))}>
+        <Tabs value={activeTab} onValueChange={v => setActiveTab(String(v))}>
           <TabsList className="w-full mb-6">
             <TabsTrigger value="profile" className="flex-1">Личные данные</TabsTrigger>
             <TabsTrigger value="security" className="flex-1">Безопасность</TabsTrigger>
           </TabsList>
 
-          {/* Profile tab */}
           <TabsContent value="profile">
             {profileLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-8 h-8 text-primary animate-spin" />
-              </div>
+              <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 text-primary animate-spin" /></div>
             ) : (
               <Card>
                 <CardContent className="pt-6 space-y-5">
+
                   {/* Personal */}
                   <div className="space-y-4">
-                    <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                      Личные данные
-                    </h2>
-
+                    <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Личные данные</h2>
+                    {(['name', 'city'] as const).map(field => (
+                      <div key={field} className="space-y-1.5">
+                        <Label>{field === 'name' ? 'Имя и фамилия' : 'Город'}</Label>
+                        <Input placeholder={field === 'name' ? 'Иван Иванов' : 'Москва'} value={form[field] || ''} onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))} />
+                      </div>
+                    ))}
                     <div className="space-y-1.5">
-                      <Label htmlFor="s-name">Имя и фамилия</Label>
-                      <Input
-                        id="s-name"
-                        placeholder="Иван Иванов"
-                        value={form.name || ''}
-                        onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                      />
+                      <Label>Телефон</Label>
+                      <Input type="tel" placeholder="+7XXXXXXXXXX" value={form.phone || ''} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
                     </div>
-
                     <div className="space-y-1.5">
-                      <Label htmlFor="s-city">Город</Label>
-                      <Input
-                        id="s-city"
-                        placeholder="Москва"
-                        value={form.city || ''}
-                        onChange={e => setForm(f => ({ ...f, city: e.target.value }))}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor="s-phone">Телефон</Label>
-                      <Input
-                        id="s-phone"
-                        type="tel"
-                        placeholder="+7XXXXXXXXXX"
-                        value={form.phone || ''}
-                        onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor="s-email">Email</Label>
-                      <Input
-                        id="s-email"
-                        type="email"
-                        placeholder="you@example.com"
-                        value={form.email || ''}
-                        onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                      />
+                      <Label>Email</Label>
+                      <Input type="email" placeholder="you@example.com" value={form.email || ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
                     </div>
                   </div>
 
                   <Separator />
 
                   {/* Links */}
-                  <div className="space-y-4">
-                    <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                      Ссылки
-                    </h2>
-
+                  <div className="space-y-3">
+                    <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Ссылки</h2>
                     <div className="space-y-1.5">
-                      <Label htmlFor="s-hh">Ссылка на hh.ru</Label>
-                      <Input
-                        id="s-hh"
-                        type="url"
-                        placeholder="https://hh.ru/resume/..."
-                        value={form.link_hh || ''}
-                        onChange={e => setForm(f => ({ ...f, link_hh: e.target.value }))}
-                      />
+                      <Label>hh.ru</Label>
+                      <Input type="url" placeholder="https://hh.ru/resume/..." value={form.link_hh || ''} onChange={e => setForm(f => ({ ...f, link_hh: e.target.value }))} />
                     </div>
-
                     <div className="space-y-1.5">
-                      <Label htmlFor="s-portfolio">Ссылка на GitHub / портфолио</Label>
-                      <Input
-                        id="s-portfolio"
-                        type="url"
-                        placeholder="https://github.com/..."
-                        value={form.link_portfolio || ''}
-                        onChange={e => setForm(f => ({ ...f, link_portfolio: e.target.value }))}
-                      />
+                      <Label>GitHub / Портфолио</Label>
+                      <Input type="url" placeholder="https://github.com/..." value={form.link_portfolio || ''} onChange={e => setForm(f => ({ ...f, link_portfolio: e.target.value }))} />
                     </div>
+                    {(form.links || []).map((link, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <Input type="url" placeholder="https://..." value={link} onChange={e => updateLink(i, e.target.value)} className="flex-1" />
+                        <Button type="button" variant="ghost" size="icon" onClick={() => removeLink(i)} className="text-muted-foreground hover:text-destructive shrink-0">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button type="button" variant="outline" size="sm" onClick={addLink} className="gap-1">
+                      <Plus className="w-3 h-3" /> Ещё ссылка
+                    </Button>
                   </div>
 
                   <Separator />
 
                   {/* Education */}
-                  <div className="space-y-4">
-                    <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                      Образование
-                    </h2>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor="s-uni">Вуз</Label>
-                      <Input
-                        id="s-uni"
-                        placeholder="МГУ им. М.В. Ломоносова"
-                        value={form.university || ''}
-                        onChange={e => setForm(f => ({ ...f, university: e.target.value }))}
-                      />
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Образование</h2>
+                      <Button type="button" variant="outline" size="sm" onClick={addEdu} className="gap-1">
+                        <Plus className="w-3 h-3" /> Добавить
+                      </Button>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="s-faculty">Факультет</Label>
-                      <Input
-                        id="s-faculty"
-                        placeholder="Факультет вычислительной математики"
-                        value={form.faculty || ''}
-                        onChange={e => setForm(f => ({ ...f, faculty: e.target.value }))}
-                      />
+                    {/* Primary */}
+                    <div className="space-y-3 p-3 border rounded-xl">
+                      <p className="text-xs text-muted-foreground font-medium">Основное</p>
+                      {([['university','Вуз','МГУ'],['faculty','Факультет','ВМК'],['speciality','Специальность','Прикладная математика'],['graduation_year','Год / курс','2026']] as const).map(([field, label, ph]) => (
+                        <div key={field} className="space-y-1">
+                          <Label className="text-xs">{label}</Label>
+                          <Input placeholder={ph} value={form[field] || ''} onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))} className="h-8 text-sm" />
+                        </div>
+                      ))}
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="s-spec">Специальность</Label>
-                      <Input
-                        id="s-spec"
-                        placeholder="Прикладная математика"
-                        value={form.speciality || ''}
-                        onChange={e => setForm(f => ({ ...f, speciality: e.target.value }))}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor="s-year">Год окончания / курс</Label>
-                      <Input
-                        id="s-year"
-                        placeholder="2026 или 3 курс"
-                        value={form.graduation_year || ''}
-                        onChange={e => setForm(f => ({ ...f, graduation_year: e.target.value }))}
-                      />
-                    </div>
+                    {/* Additional */}
+                    {(form.education_list || []).map((edu, i) => (
+                      <div key={i} className="space-y-3 p-3 border rounded-xl">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground font-medium">Доп. образование {i + 1}</p>
+                          <Button type="button" variant="ghost" size="icon" onClick={() => removeEdu(i)} className="text-muted-foreground hover:text-destructive h-6 w-6">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                        {([['university','Вуз','Название'],['faculty','Факультет','Факультет'],['speciality','Специальность','Специальность'],['year','Год / курс','2026'],['achievements','Достижения','Красный диплом...']] as const).map(([field, label, ph]) => (
+                          <div key={field} className="space-y-1">
+                            <Label className="text-xs">{label}</Label>
+                            <Input placeholder={ph} value={edu[field]} onChange={e => updateEdu(i, field, e.target.value)} className="h-8 text-sm" />
+                          </div>
+                        ))}
+                      </div>
+                    ))}
                   </div>
 
                   <Separator />
@@ -323,235 +223,71 @@ export default function SettingsPage() {
                   {/* Languages */}
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                        Языки
-                      </h2>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={addLanguage}
-                        className="gap-1"
-                      >
-                        <Plus className="w-3 h-3" />
-                        Добавить
+                      <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Языки</h2>
+                      <Button type="button" variant="outline" size="sm" onClick={addLanguage} className="gap-1">
+                        <Plus className="w-3 h-3" /> Добавить
                       </Button>
                     </div>
-
-                    {(form.languages || []).map((lang, index) => (
-                      <div key={index} className="flex gap-2 items-center">
-                        <Input
-                          placeholder="Английский"
-                          value={lang.language}
-                          onChange={e => updateLanguage(index, 'language', e.target.value)}
-                          className="flex-1"
-                        />
-                        <select
-                          className="h-8 w-24 rounded-lg border border-input bg-transparent px-2 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                          value={lang.level}
-                          onChange={e => updateLanguage(index, 'level', e.target.value)}
-                        >
-                          {LANGUAGE_LEVELS.map(level => (
-                            <option key={level} value={level}>{level}</option>
-                          ))}
+                    {(form.languages || []).map((lang, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <Input placeholder="Английский" value={lang.language} onChange={e => updateLanguage(i, 'language', e.target.value)} className="flex-1" />
+                        <select className="h-8 w-24 rounded-lg border border-input bg-transparent px-2 py-1 text-sm outline-none" value={lang.level} onChange={e => updateLanguage(i, 'level', e.target.value)}>
+                          {LANGUAGE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
                         </select>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeLanguage(index)}
-                          className="text-muted-foreground hover:text-destructive shrink-0"
-                        >
+                        <Button type="button" variant="ghost" size="icon" onClick={() => removeLanguage(i)} className="text-muted-foreground hover:text-destructive shrink-0">
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     ))}
-
-                    {(form.languages || []).length === 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        Нажмите «Добавить» чтобы указать языки
-                      </p>
-                    )}
+                    {(form.languages || []).length === 0 && <p className="text-sm text-muted-foreground">Нажмите «Добавить»</p>}
                   </div>
 
-                  <Button
-                    onClick={handleSaveProfile}
-                    disabled={profileSaving}
-                    className="w-full h-11"
-                  >
-                    {profileSaving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        Сохраняем...
-                      </>
-                    ) : (
-                      'Сохранить'
-                    )}
+                  <Button onClick={handleSaveProfile} disabled={profileSaving} className="w-full h-11">
+                    {profileSaving ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Сохраняем...</> : 'Сохранить'}
                   </Button>
                 </CardContent>
               </Card>
             )}
           </TabsContent>
 
-          {/* Security tab */}
           <TabsContent value="security">
             <div className="space-y-4">
-              {/* Change password */}
+              {/* Password */}
               <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Сменить пароль</CardTitle>
-                  <CardDescription>Введите текущий пароль и придумайте новый</CardDescription>
-                </CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Сменить пароль</CardTitle><CardDescription>Введите текущий пароль и придумайте новый</CardDescription></CardHeader>
                 <CardContent>
                   <form onSubmit={handleChangePassword} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="old-password">Старый пароль</Label>
-                      <Input
-                        id="old-password"
-                        type="password"
-                        placeholder="Текущий пароль"
-                        value={passwordForm.old_password}
-                        onChange={e => setPasswordForm(f => ({ ...f, old_password: e.target.value }))}
-                        autoComplete="current-password"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="new-password">Новый пароль</Label>
-                      <Input
-                        id="new-password"
-                        type="password"
-                        placeholder="Минимум 8 символов"
-                        value={passwordForm.new_password}
-                        onChange={e => setPasswordForm(f => ({ ...f, new_password: e.target.value }))}
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="confirm-password">Повтор нового пароля</Label>
-                      <Input
-                        id="confirm-password"
-                        type="password"
-                        placeholder="Повторите новый пароль"
-                        value={passwordForm.new_password_confirm}
-                        onChange={e => setPasswordForm(f => ({ ...f, new_password_confirm: e.target.value }))}
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    {passwordError && (
-                      <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-                        {passwordError}
-                      </p>
-                    )}
-                    <Button type="submit" disabled={passwordLoading} className="w-full">
-                      {passwordLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                          Меняем...
-                        </>
-                      ) : (
-                        'Сменить пароль'
-                      )}
-                    </Button>
+                    <div className="space-y-1.5"><Label>Старый пароль</Label><Input type="password" placeholder="Текущий пароль" value={passwordForm.old_password} onChange={e => setPasswordForm(f => ({ ...f, old_password: e.target.value }))} autoComplete="current-password" /></div>
+                    <div className="space-y-1.5"><Label>Новый пароль</Label><Input type="password" placeholder="Минимум 8 символов" value={passwordForm.new_password} onChange={e => setPasswordForm(f => ({ ...f, new_password: e.target.value }))} autoComplete="new-password" /></div>
+                    <div className="space-y-1.5"><Label>Повтор</Label><Input type="password" placeholder="Повторите" value={passwordForm.new_password_confirm} onChange={e => setPasswordForm(f => ({ ...f, new_password_confirm: e.target.value }))} autoComplete="new-password" /></div>
+                    {passwordError && <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{passwordError}</p>}
+                    <Button type="submit" disabled={passwordLoading} className="w-full">{passwordLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Меняем...</> : 'Сменить пароль'}</Button>
                   </form>
                 </CardContent>
               </Card>
 
-              {/* Change email */}
+              {/* Email */}
               <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Сменить email</CardTitle>
-                  <CardDescription>Для смены email потребуется текущий пароль</CardDescription>
-                </CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Сменить email</CardTitle><CardDescription>Потребуется текущий пароль</CardDescription></CardHeader>
                 <CardContent>
                   <form onSubmit={handleChangeEmail} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="new-email">Новый email</Label>
-                      <Input
-                        id="new-email"
-                        type="email"
-                        placeholder="new@example.com"
-                        value={emailForm.new_email}
-                        onChange={e => setEmailForm(f => ({ ...f, new_email: e.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="email-password">Текущий пароль</Label>
-                      <Input
-                        id="email-password"
-                        type="password"
-                        placeholder="Текущий пароль"
-                        value={emailForm.password}
-                        onChange={e => setEmailForm(f => ({ ...f, password: e.target.value }))}
-                        autoComplete="current-password"
-                      />
-                    </div>
-                    {emailError && (
-                      <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-                        {emailError}
-                      </p>
-                    )}
-                    <Button type="submit" disabled={emailLoading} className="w-full">
-                      {emailLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                          Меняем...
-                        </>
-                      ) : (
-                        'Сменить email'
-                      )}
-                    </Button>
+                    <div className="space-y-1.5"><Label>Новый email</Label><Input type="email" placeholder="new@example.com" value={emailForm.new_email} onChange={e => setEmailForm(f => ({ ...f, new_email: e.target.value }))} /></div>
+                    <div className="space-y-1.5"><Label>Текущий пароль</Label><Input type="password" placeholder="Пароль" value={emailForm.password} onChange={e => setEmailForm(f => ({ ...f, password: e.target.value }))} autoComplete="current-password" /></div>
+                    {emailError && <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{emailError}</p>}
+                    <Button type="submit" disabled={emailLoading} className="w-full">{emailLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Меняем...</> : 'Сменить email'}</Button>
                   </form>
                 </CardContent>
               </Card>
 
-              {/* Change phone */}
+              {/* Phone */}
               <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Сменить телефон</CardTitle>
-                  <CardDescription>Для смены телефона потребуется текущий пароль</CardDescription>
-                </CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Сменить телефон</CardTitle><CardDescription>Потребуется текущий пароль</CardDescription></CardHeader>
                 <CardContent>
                   <form onSubmit={handleChangePhone} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="new-phone">Новый телефон</Label>
-                      <Input
-                        id="new-phone"
-                        type="tel"
-                        placeholder="+7XXXXXXXXXX"
-                        value={phoneForm.new_phone}
-                        onChange={e => {
-                          let v = e.target.value
-                          if (!v.startsWith('+7')) v = '+7' + v.replace(/^\+7?/, '')
-                          setPhoneForm(f => ({ ...f, new_phone: v }))
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="phone-password">Текущий пароль</Label>
-                      <Input
-                        id="phone-password"
-                        type="password"
-                        placeholder="Текущий пароль"
-                        value={phoneForm.password}
-                        onChange={e => setPhoneForm(f => ({ ...f, password: e.target.value }))}
-                        autoComplete="current-password"
-                      />
-                    </div>
-                    {phoneError && (
-                      <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-                        {phoneError}
-                      </p>
-                    )}
-                    <Button type="submit" disabled={phoneLoading} className="w-full">
-                      {phoneLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                          Меняем...
-                        </>
-                      ) : (
-                        'Сменить телефон'
-                      )}
-                    </Button>
+                    <div className="space-y-1.5"><Label>Новый телефон</Label><Input type="tel" placeholder="+7XXXXXXXXXX" value={phoneForm.new_phone} onChange={e => { let v = e.target.value.replace(/\s/g,''); if (!v.startsWith('+7')) v='+7'; setPhoneForm(f => ({ ...f, new_phone: v })) }} /></div>
+                    <div className="space-y-1.5"><Label>Текущий пароль</Label><Input type="password" placeholder="Пароль" value={phoneForm.password} onChange={e => setPhoneForm(f => ({ ...f, password: e.target.value }))} autoComplete="current-password" /></div>
+                    {phoneError && <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{phoneError}</p>}
+                    <Button type="submit" disabled={phoneLoading} className="w-full">{phoneLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Меняем...</> : 'Сменить телефон'}</Button>
                   </form>
                 </CardContent>
               </Card>

@@ -196,23 +196,32 @@ export function ResumePreview({ data }: ResumePreviewProps) {
                 <div className="mb-2">
                   <div className="text-xs text-muted-foreground mb-1.5">Проекты</div>
                   <div className="space-y-0.5">
-                    {data.extra.projects.map((project, i) => (
-                      <div key={i}>
-                        {project.startsWith('http') ? (
-                          <a
-                            href={project}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-primary hover:underline flex items-center gap-1"
-                          >
-                            <LinkIcon className="w-3 h-3" />
-                            {project.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                          </a>
-                        ) : (
-                          <span className="text-sm">{project}</span>
-                        )}
-                      </div>
-                    ))}
+                    {data.extra.projects.map((project, i) => {
+                      const p = typeof project === 'string'
+                        ? project
+                        : (project as { url?: string; link?: string; name?: string; title?: string })?.url
+                          || (project as { url?: string; link?: string; name?: string; title?: string })?.link
+                          || (project as { url?: string; link?: string; name?: string; title?: string })?.name
+                          || (project as { url?: string; link?: string; name?: string; title?: string })?.title
+                          || String(project)
+                      return (
+                        <div key={i}>
+                          {p.startsWith('http') ? (
+                            <a
+                              href={p}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-primary hover:underline flex items-center gap-1"
+                            >
+                              <LinkIcon className="w-3 h-3" />
+                              {p.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                            </a>
+                          ) : (
+                            <span className="text-sm">{p}</span>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}

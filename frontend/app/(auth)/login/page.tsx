@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { auth } from '@/lib/api'
 import { saveTokens } from '@/lib/auth'
+import { Loader2 } from 'lucide-react'
+import axios from 'axios'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -19,14 +21,9 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!form.login.trim()) {
-      setError('Введите телефон или email')
-      return
-    }
-    if (!form.password) {
-      setError('Введите пароль')
-      return
-    }
+    if (!form.login.trim()) { setError('Введите телефон или email'); return }
+    if (!form.password)     { setError('Введите пароль'); return }
+
     setLoading(true)
     try {
       const { data } = await auth.login(form)
@@ -35,14 +32,19 @@ export default function LoginPage() {
       const onboarded = localStorage.getItem('wto_onboarded')
       router.push(onboarded ? '/' : '/onboarding')
     } catch (err: unknown) {
-      const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response?.status
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      if (status === 401) {
-        setError('Неверный логин или пароль')
-      } else if (status === 403) {
-        setError(detail || 'Аккаунт не подтверждён. Проверьте email или телефон.')
+      console.error('[login] error:', err)
+      if (axios.isAxiosError(err)) {
+        if (!err.response) {
+          setError('Не удалось подключиться к серверу. Убедитесь что бэкенд запущен.')
+        } else if (err.response.status === 401) {
+          setError('Неверный логин или пароль')
+        } else if (err.response.status === 403) {
+          setError('Аккаунт не подтверждён. Пройдите верификацию email и телефона.')
+        } else {
+          setError(`Ошибка сервера: ${err.response.data?.detail || err.response.statusText}`)
+        }
       } else {
-        toast.error('Ошибка входа. Попробуйте ещё раз.')
+        setError('Неожиданная ошибка. Откройте консоль браузера для деталей.')
       }
     } finally {
       setLoading(false)
@@ -90,7 +92,7 @@ export default function LoginPage() {
             )}
 
             <Button type="submit" disabled={loading} className="w-full h-12 mt-2">
-              {loading ? 'Входим...' : 'Войти'}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Входим...</> : 'Войти'}
             </Button>
           </form>
 
