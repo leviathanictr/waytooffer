@@ -1,8 +1,8 @@
-FROM python:3.11-slim
+FROM python:3.11-bookworm
 
 WORKDIR /app
 
-# WeasyPrint requires Pango + Cairo (Linux-native, no GTK3 installer needed here)
+# WeasyPrint native deps (Pango/Cairo/GDK) — bookworm has these in default repos
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpangocairo-1.0-0 \
     libpango-1.0-0 \
