@@ -18,62 +18,34 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<'welcome' | 'form'>('welcome')
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState<Profile>({
-    name: '',
-    city: '',
-    phone: '',
-    email: '',
-    link_hh: '',
-    link_portfolio: '',
-    university: '',
-    faculty: '',
-    speciality: '',
-    graduation_year: '',
+    name: '', city: '', phone: '', telegram: '', email: '',
+    link_hh: '', link_portfolio: '',
+    university: '', faculty: '', speciality: '', graduation_year: '',
     languages: [],
   })
 
   useEffect(() => {
-    if (!isAuthenticated()) {
-      router.push('/login')
-      return
-    }
-    if (typeof window !== 'undefined') {
-      const onboarded = localStorage.getItem('wto_onboarded')
-      if (onboarded === '1') {
-        router.push('/')
-      }
+    if (!isAuthenticated()) { router.push('/login'); return }
+    if (typeof window !== 'undefined' && localStorage.getItem('wto_onboarded') === '1') {
+      router.push('/')
     }
   }, [router])
 
   function addLanguage() {
-    setForm(f => ({
-      ...f,
-      languages: [...(f.languages || []), { language: '', level: 'B1' }],
-    }))
+    setForm(f => ({ ...f, languages: [...(f.languages || []), { language: '', level: 'B1' }] }))
   }
-
-  function removeLanguage(index: number) {
-    setForm(f => ({
-      ...f,
-      languages: (f.languages || []).filter((_, i) => i !== index),
-    }))
+  function removeLanguage(i: number) {
+    setForm(f => ({ ...f, languages: (f.languages || []).filter((_, idx) => idx !== i) }))
   }
-
-  function updateLanguage(index: number, field: 'language' | 'level', value: string) {
-    setForm(f => ({
-      ...f,
-      languages: (f.languages || []).map((lang, i) =>
-        i === index ? { ...lang, [field]: value } : lang
-      ),
-    }))
+  function updateLanguage(i: number, field: 'language' | 'level', val: string) {
+    setForm(f => ({ ...f, languages: (f.languages || []).map((l, idx) => idx === i ? { ...l, [field]: val } : l) }))
   }
 
   async function handleSave() {
     setLoading(true)
     try {
       await profileApi.update(form)
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('wto_onboarded', '1')
-      }
+      localStorage.setItem('wto_onboarded', '1')
       toast.success('Данные сохранены!')
       router.push('/')
     } catch {
@@ -84,9 +56,7 @@ export default function OnboardingPage() {
   }
 
   function handleSkip() {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('wto_onboarded', '1')
-    }
+    localStorage.setItem('wto_onboarded', '1')
     router.push('/')
   }
 
@@ -98,23 +68,12 @@ export default function OnboardingPage() {
             <div className="text-4xl mb-3">👋</div>
             <CardTitle className="text-xl">Привет!</CardTitle>
             <CardDescription className="text-base mt-2">
-              Хочешь заполнить базовые данные? Мы будем подставлять их в каждое резюме автоматически — тебе не придётся вводить их заново.
+              Заполни базовые данные — мы будем подставлять их в каждое резюме автоматически.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <Button
-              onClick={() => setStep('form')}
-              className="w-full h-11"
-            >
-              Заполнить анкету
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleSkip}
-              className="w-full h-11"
-            >
-              Пропустить
-            </Button>
+            <Button onClick={() => setStep('form')} className="w-full h-11">Заполнить анкету</Button>
+            <Button variant="outline" onClick={handleSkip} className="w-full h-11">Пропустить</Button>
           </CardContent>
         </Card>
       </div>
@@ -127,43 +86,30 @@ export default function OnboardingPage() {
         <div className="mb-6 text-center">
           <div className="text-2xl font-bold text-primary">WayToOffer</div>
           <h1 className="text-xl font-semibold mt-2">Базовые данные</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Эти данные будут автоматически подставляться в каждое резюме
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">Автоматически подставляются в каждое резюме</p>
         </div>
 
         <Card>
           <CardContent className="pt-6 space-y-5">
-            {/* Personal */}
+
+            {/* Контактные данные */}
             <div className="space-y-4">
-              <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                Личные данные
-              </h2>
+              <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Контактные данные</h2>
 
               <div className="space-y-1.5">
-                <Label htmlFor="name">Имя и фамилия</Label>
-                <Input
-                  id="name"
-                  placeholder="Иван Иванов"
-                  value={form.name || ''}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                />
+                <Label htmlFor="ob-name">Имя и фамилия</Label>
+                <Input id="ob-name" placeholder="Иван Иванов" value={form.name || ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="city">Город</Label>
-                <Input
-                  id="city"
-                  placeholder="Москва"
-                  value={form.city || ''}
-                  onChange={e => setForm(f => ({ ...f, city: e.target.value }))}
-                />
+                <Label htmlFor="ob-city">Город</Label>
+                <Input id="ob-city" placeholder="Москва" value={form.city || ''} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="phone">Телефон</Label>
+                <Label htmlFor="ob-phone">Телефон</Label>
                 <Input
-                  id="phone"
+                  id="ob-phone"
                   type="tel"
                   placeholder="+7XXXXXXXXXX"
                   value={form.phone || ''}
@@ -172,165 +118,81 @@ export default function OnboardingPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="ob-telegram">Telegram</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={form.email || ''}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  id="ob-telegram"
+                  placeholder="@username"
+                  value={form.telegram || ''}
+                  onChange={e => setForm(f => ({ ...f, telegram: e.target.value }))}
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="ob-email">Email для резюме</Label>
+                <Input id="ob-email" type="email" placeholder="you@example.com" value={form.email || ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
               </div>
             </div>
 
-            {/* Links */}
+            {/* Ссылки */}
             <div className="space-y-4">
-              <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                Ссылки
-              </h2>
-
+              <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Ссылки</h2>
               <div className="space-y-1.5">
-                <Label htmlFor="link_hh">Ссылка на hh.ru</Label>
-                <Input
-                  id="link_hh"
-                  type="url"
-                  placeholder="https://hh.ru/resume/..."
-                  value={form.link_hh || ''}
-                  onChange={e => setForm(f => ({ ...f, link_hh: e.target.value }))}
-                />
+                <Label htmlFor="ob-hh">hh.ru</Label>
+                <Input id="ob-hh" type="url" placeholder="https://hh.ru/resume/..." value={form.link_hh || ''} onChange={e => setForm(f => ({ ...f, link_hh: e.target.value }))} />
               </div>
-
               <div className="space-y-1.5">
-                <Label htmlFor="link_portfolio">Ссылка на GitHub / портфолио</Label>
-                <Input
-                  id="link_portfolio"
-                  type="url"
-                  placeholder="https://github.com/..."
-                  value={form.link_portfolio || ''}
-                  onChange={e => setForm(f => ({ ...f, link_portfolio: e.target.value }))}
-                />
+                <Label htmlFor="ob-portfolio">GitHub / Портфолио</Label>
+                <Input id="ob-portfolio" type="url" placeholder="https://github.com/..." value={form.link_portfolio || ''} onChange={e => setForm(f => ({ ...f, link_portfolio: e.target.value }))} />
               </div>
             </div>
 
-            {/* Education */}
+            {/* Образование */}
             <div className="space-y-4">
-              <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                Образование
-              </h2>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="university">Вуз</Label>
-                <Input
-                  id="university"
-                  placeholder="МГУ им. М.В. Ломоносова"
-                  value={form.university || ''}
-                  onChange={e => setForm(f => ({ ...f, university: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="faculty">Факультет</Label>
-                <Input
-                  id="faculty"
-                  placeholder="Факультет вычислительной математики"
-                  value={form.faculty || ''}
-                  onChange={e => setForm(f => ({ ...f, faculty: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="speciality">Специальность</Label>
-                <Input
-                  id="speciality"
-                  placeholder="Прикладная математика"
-                  value={form.speciality || ''}
-                  onChange={e => setForm(f => ({ ...f, speciality: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="graduation_year">Год окончания / курс</Label>
-                <Input
-                  id="graduation_year"
-                  placeholder="2026 или 3 курс"
-                  value={form.graduation_year || ''}
-                  onChange={e => setForm(f => ({ ...f, graduation_year: e.target.value }))}
-                />
-              </div>
+              <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Образование</h2>
+              {[
+                { id: 'ob-uni',  label: 'Вуз',           field: 'university',      ph: 'МГУ' },
+                { id: 'ob-fac',  label: 'Факультет',      field: 'faculty',         ph: 'ВМК' },
+                { id: 'ob-spec', label: 'Специальность',  field: 'speciality',      ph: 'Прикладная математика' },
+                { id: 'ob-year', label: 'Год / курс',     field: 'graduation_year', ph: '2026 или 3 курс' },
+              ].map(({ id, label, field, ph }) => (
+                <div key={id} className="space-y-1.5">
+                  <Label htmlFor={id}>{label}</Label>
+                  <Input id={id} placeholder={ph} value={(form as Record<string, unknown>)[field] as string || ''} onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))} />
+                </div>
+              ))}
             </div>
 
-            {/* Languages */}
+            {/* Языки */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                  Языки
-                </h2>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addLanguage}
-                  className="gap-1"
-                >
-                  <Plus className="w-3 h-3" />
-                  Добавить
+                <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Языки</h2>
+                <Button type="button" variant="outline" size="sm" onClick={addLanguage} className="gap-1">
+                  <Plus className="w-3 h-3" /> Добавить
                 </Button>
               </div>
-
-              {(form.languages || []).map((lang, index) => (
-                <div key={index} className="flex gap-2 items-start">
-                  <div className="flex-1 space-y-1.5">
-                    <Input
-                      placeholder="Английский"
-                      value={lang.language}
-                      onChange={e => updateLanguage(index, 'language', e.target.value)}
-                    />
-                  </div>
-                  <div className="w-28 space-y-1.5">
-                    <select
-                      className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                      value={lang.level}
-                      onChange={e => updateLanguage(index, 'level', e.target.value)}
-                    >
-                      {LANGUAGE_LEVELS.map(level => (
-                        <option key={level} value={level}>{level}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeLanguage(index)}
-                    className="text-muted-foreground hover:text-destructive mt-0"
+              {(form.languages || []).map((lang, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <Input placeholder="Английский" value={lang.language} onChange={e => updateLanguage(i, 'language', e.target.value)} className="flex-1" />
+                  <select
+                    className="h-8 w-24 rounded-lg border border-input bg-transparent px-2 py-1 text-sm outline-none"
+                    value={lang.level}
+                    onChange={e => updateLanguage(i, 'level', e.target.value)}
                   >
+                    {LANGUAGE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removeLanguage(i)} className="text-muted-foreground hover:text-destructive shrink-0">
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               ))}
-
               {(form.languages || []).length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  Нажмите «Добавить» чтобы указать языки
-                </p>
+                <p className="text-sm text-muted-foreground">Нажмите «Добавить»</p>
               )}
             </div>
 
             <div className="flex gap-3 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleSkip}
-                className="flex-1 h-11"
-              >
-                Пропустить
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSave}
-                disabled={loading}
-                className="flex-1 h-11"
-              >
+              <Button type="button" variant="outline" onClick={handleSkip} className="flex-1 h-11">Пропустить</Button>
+              <Button type="button" onClick={handleSave} disabled={loading} className="flex-1 h-11">
                 {loading ? 'Сохраняем...' : 'Сохранить'}
               </Button>
             </div>

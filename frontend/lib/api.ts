@@ -47,7 +47,7 @@ api.interceptors.response.use(
 
 // Auth endpoints
 export const auth = {
-  register: (data: { phone: string; email: string; password: string; password_confirm: string }) =>
+  register: (data: { email: string; password: string; password_confirm: string }) =>
     api.post<{ user_id: string; needs_verification: boolean }>('/auth/register', data),
 
   login: (data: { login: string; password: string }) =>
@@ -65,11 +65,11 @@ export const auth = {
   changePassword: (data: { old_password: string; new_password: string; new_password_confirm: string }) =>
     api.post('/auth/change-password', data),
 
-  changeEmail: (data: { new_email: string; password: string }) =>
-    api.post('/auth/change-email', data),
+  changeEmailRequest: (data: { new_email: string; password: string }) =>
+    api.post('/auth/change-email/request', data),
 
-  changePhone: (data: { new_phone: string; password: string }) =>
-    api.post('/auth/change-phone', data),
+  changeEmailConfirm: (data: { new_email: string; code: string }) =>
+    api.post('/auth/change-email/confirm', data),
 }
 
 // Profile

@@ -10,6 +10,7 @@ export interface Profile {
   name?: string
   city?: string
   phone?: string
+  telegram?: string
   email?: string
   link_hh?: string
   link_portfolio?: string

@@ -22,7 +22,7 @@ export default function SettingsPage() {
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileSaving, setProfileSaving] = useState(false)
   const [form, setForm] = useState<Profile>({
-    name: '', city: '', phone: '', email: '',
+    name: '', city: '', phone: '', telegram: '', email: '',
     link_hh: '', link_portfolio: '',
     university: '', faculty: '', speciality: '', graduation_year: '',
     languages: [], links: [], education_list: [],
@@ -30,12 +30,10 @@ export default function SettingsPage() {
   const [passwordForm, setPasswordForm] = useState({ old_password: '', new_password: '', new_password_confirm: '' })
   const [passwordLoading, setPasswordLoading] = useState(false)
   const [passwordError, setPasswordError] = useState('')
-  const [emailForm, setEmailForm] = useState({ new_email: '', password: '' })
+  const [emailStep, setEmailStep] = useState<'request' | 'confirm'>('request')
+  const [emailForm, setEmailForm] = useState({ new_email: '', password: '', code: '' })
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError] = useState('')
-  const [phoneForm, setPhoneForm] = useState({ new_phone: '+7', password: '' })
-  const [phoneLoading, setPhoneLoading] = useState(false)
-  const [phoneError, setPhoneError] = useState('')
 
   useEffect(() => {
     if (!isAuthenticated()) { router.push('/login'); return }
@@ -49,6 +47,7 @@ export default function SettingsPage() {
       setForm({
         name: data.name || '', city: data.city || '',
         phone: data.phone || '', email: data.email || '',
+        telegram: data.telegram || '',
         link_hh: data.link_hh || '', link_portfolio: data.link_portfolio || '',
         university: data.university || '', faculty: data.faculty || '',
         speciality: data.speciality || '', graduation_year: data.graduation_year || '',
@@ -93,26 +92,32 @@ export default function SettingsPage() {
     } finally { setPasswordLoading(false) }
   }
 
-  async function handleChangeEmail(e: React.FormEvent) {
+  async function handleEmailRequest(e: React.FormEvent) {
     e.preventDefault(); setEmailError('')
     if (!emailForm.new_email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) { setEmailError('Введите корректный email'); return }
     setEmailLoading(true)
-    try { await auth.changeEmail(emailForm); toast.success('Email изменён!'); setEmailForm({ new_email: '', password: '' }) }
-    catch (err: unknown) {
+    try {
+      await auth.changeEmailRequest({ new_email: emailForm.new_email, password: emailForm.password })
+      toast.success('Код отправлен на новый email')
+      setEmailStep('confirm')
+    } catch (err: unknown) {
       const raw = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
       setEmailError((Array.isArray(raw) ? raw[0]?.msg : raw as string) || 'Ошибка')
     } finally { setEmailLoading(false) }
   }
 
-  async function handleChangePhone(e: React.FormEvent) {
-    e.preventDefault(); setPhoneError('')
-    if (!phoneForm.new_phone.match(/^\+7\d{10}$/)) { setPhoneError('Формат: +7XXXXXXXXXX'); return }
-    setPhoneLoading(true)
-    try { await auth.changePhone(phoneForm); toast.success('Телефон изменён!'); setPhoneForm({ new_phone: '+7', password: '' }) }
-    catch (err: unknown) {
+  async function handleEmailConfirm(e: React.FormEvent) {
+    e.preventDefault(); setEmailError('')
+    setEmailLoading(true)
+    try {
+      await auth.changeEmailConfirm({ new_email: emailForm.new_email, code: emailForm.code })
+      toast.success('Email успешно изменён!')
+      setEmailForm({ new_email: '', password: '', code: '' })
+      setEmailStep('request')
+    } catch (err: unknown) {
       const raw = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-      setPhoneError((Array.isArray(raw) ? raw[0]?.msg : raw as string) || 'Ошибка')
-    } finally { setPhoneLoading(false) }
+      setEmailError((Array.isArray(raw) ? raw[0]?.msg : raw as string) || 'Неверный код')
+    } finally { setEmailLoading(false) }
   }
 
   return (
@@ -144,6 +149,10 @@ export default function SettingsPage() {
                     <div className="space-y-1.5">
                       <Label>Телефон</Label>
                       <Input type="tel" placeholder="+7XXXXXXXXXX" value={form.phone || ''} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Telegram</Label>
+                      <Input placeholder="@username" value={form.telegram || ''} onChange={e => setForm(f => ({ ...f, telegram: e.target.value }))} />
                     </div>
                     <div className="space-y-1.5">
                       <Label>Email</Label>
@@ -266,29 +275,49 @@ export default function SettingsPage() {
                 </CardContent>
               </Card>
 
-              {/* Email */}
+              {/* Email — двухшаговая смена */}
               <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base">Сменить email</CardTitle><CardDescription>Потребуется текущий пароль</CardDescription></CardHeader>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Сменить email</CardTitle>
+                  <CardDescription>
+                    {emailStep === 'request'
+                      ? 'Введите новый email и текущий пароль — отправим код подтверждения'
+                      : `Код отправлен на ${emailForm.new_email}`}
+                  </CardDescription>
+                </CardHeader>
                 <CardContent>
-                  <form onSubmit={handleChangeEmail} className="space-y-4">
-                    <div className="space-y-1.5"><Label>Новый email</Label><Input type="email" placeholder="new@example.com" value={emailForm.new_email} onChange={e => setEmailForm(f => ({ ...f, new_email: e.target.value }))} /></div>
-                    <div className="space-y-1.5"><Label>Текущий пароль</Label><Input type="password" placeholder="Пароль" value={emailForm.password} onChange={e => setEmailForm(f => ({ ...f, password: e.target.value }))} autoComplete="current-password" /></div>
-                    {emailError && <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{emailError}</p>}
-                    <Button type="submit" disabled={emailLoading} className="w-full">{emailLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Меняем...</> : 'Сменить email'}</Button>
-                  </form>
-                </CardContent>
-              </Card>
-
-              {/* Phone */}
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base">Сменить телефон</CardTitle><CardDescription>Потребуется текущий пароль</CardDescription></CardHeader>
-                <CardContent>
-                  <form onSubmit={handleChangePhone} className="space-y-4">
-                    <div className="space-y-1.5"><Label>Новый телефон</Label><Input type="tel" placeholder="+7XXXXXXXXXX" value={phoneForm.new_phone} onChange={e => { let v = e.target.value.replace(/\s/g,''); if (!v.startsWith('+7')) v='+7'; setPhoneForm(f => ({ ...f, new_phone: v })) }} /></div>
-                    <div className="space-y-1.5"><Label>Текущий пароль</Label><Input type="password" placeholder="Пароль" value={phoneForm.password} onChange={e => setPhoneForm(f => ({ ...f, password: e.target.value }))} autoComplete="current-password" /></div>
-                    {phoneError && <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{phoneError}</p>}
-                    <Button type="submit" disabled={phoneLoading} className="w-full">{phoneLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Меняем...</> : 'Сменить телефон'}</Button>
-                  </form>
+                  {emailStep === 'request' ? (
+                    <form onSubmit={handleEmailRequest} className="space-y-4">
+                      <div className="space-y-1.5"><Label>Новый email</Label><Input type="email" placeholder="new@example.com" value={emailForm.new_email} onChange={e => setEmailForm(f => ({ ...f, new_email: e.target.value }))} /></div>
+                      <div className="space-y-1.5"><Label>Текущий пароль</Label><Input type="password" placeholder="Пароль" value={emailForm.password} onChange={e => setEmailForm(f => ({ ...f, password: e.target.value }))} autoComplete="current-password" /></div>
+                      {emailError && <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{emailError}</p>}
+                      <Button type="submit" disabled={emailLoading} className="w-full">
+                        {emailLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Отправляем...</> : 'Получить код'}
+                      </Button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleEmailConfirm} className="space-y-4">
+                      <div className="space-y-1.5">
+                        <Label>Код из письма</Label>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="000000"
+                          maxLength={6}
+                          value={emailForm.code}
+                          onChange={e => setEmailForm(f => ({ ...f, code: e.target.value.replace(/\D/g, '') }))}
+                          autoFocus
+                        />
+                      </div>
+                      {emailError && <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">{emailError}</p>}
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" onClick={() => { setEmailStep('request'); setEmailError('') }} className="flex-1">Назад</Button>
+                        <Button type="submit" disabled={emailLoading || emailForm.code.length < 6} className="flex-1">
+                          {emailLoading ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Проверяем...</> : 'Подтвердить'}
+                        </Button>
+                      </div>
+                    </form>
+                  )}
                 </CardContent>
               </Card>
             </div>

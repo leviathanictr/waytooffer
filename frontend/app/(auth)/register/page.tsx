@@ -15,17 +15,11 @@ import axios from 'axios'
 export default function RegisterPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({
-    phone: '+7',
-    email: '',
-    password: '',
-    password_confirm: '',
-  })
+  const [form, setForm] = useState({ email: '', password: '', password_confirm: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   function validate() {
     const e: Record<string, string> = {}
-    if (!form.phone.match(/^\+7\d{10}$/)) e.phone = 'Введите номер в формате +7XXXXXXXXXX'
     if (!form.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) e.email = 'Введите корректный email'
     if (form.password.length < 8) e.password = 'Минимум 8 символов'
     if (form.password.length > 72) e.password = 'Максимум 72 символа'
@@ -41,30 +35,25 @@ export default function RegisterPage() {
     try {
       const { data } = await auth.register(form)
       saveUserId(data.user_id)
-      toast.success('Аккаунт создан! Введите коды подтверждения.')
+      toast.success('Аккаунт создан! Подтвердите email.')
       router.push('/verify')
     } catch (err: unknown) {
-      console.error('[register] error:', err)
       if (axios.isAxiosError(err)) {
         if (!err.response) {
-          toast.error('Не удалось подключиться к серверу. Убедитесь что бэкенд запущен на порту 8000.')
+          toast.error('Не удалось подключиться к серверу.')
         } else {
           const rawDetail = err.response.data?.detail
           const detail: string = Array.isArray(rawDetail)
             ? (rawDetail[0]?.msg ?? String(rawDetail[0]))
             : (rawDetail ?? '')
-          if (detail.toLowerCase().includes('phone')) {
-            toast.error('Этот номер телефона уже зарегистрирован')
-          } else if (detail.toLowerCase().includes('email')) {
+          if (detail.toLowerCase().includes('email')) {
             toast.error('Этот email уже зарегистрирован')
-          } else if (detail.toLowerCase().includes('72')) {
-            toast.error('Пароль слишком длинный (максимум 72 символа)')
           } else {
             toast.error(`Ошибка: ${detail || err.response.statusText}`)
           }
         }
       } else {
-        toast.error('Неожиданная ошибка. Откройте консоль браузера для деталей.')
+        toast.error('Неожиданная ошибка.')
       }
     } finally {
       setLoading(false)
@@ -82,23 +71,6 @@ export default function RegisterPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="phone">Телефон</Label>
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="+7XXXXXXXXXX"
-                value={form.phone}
-                onChange={e => {
-                  let v = e.target.value.replace(/\s/g, '')
-                  if (!v.startsWith('+7')) v = '+7'
-                  setForm(f => ({ ...f, phone: v }))
-                }}
-                className={errors.phone ? 'border-destructive' : ''}
-              />
-              {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
-            </div>
-
-            <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
@@ -107,6 +79,7 @@ export default function RegisterPage() {
                 value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 className={errors.email ? 'border-destructive' : ''}
+                autoFocus
               />
               {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
             </div>

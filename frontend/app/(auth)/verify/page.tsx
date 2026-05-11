@@ -58,6 +58,7 @@ export default function VerifyPage() {
     setLoading(true)
     try {
       await auth.verifyEmail({ user_id: userId, code: code.trim() })
+      if (typeof window !== 'undefined') localStorage.removeItem('wto_onboarded')
       setVerified(true)
     } catch (err) {
       toast.error(apiError(err, 'Неверный код. Попробуйте ещё раз.'))
@@ -86,11 +87,6 @@ export default function VerifyPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Мы отправили код подтверждения на ваш email
           </p>
-          {process.env.NODE_ENV === 'development' && (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
-              Dev-режим: код напечатан в консоли бэкенда
-            </p>
-          )}
         </div>
 
         <Card>
@@ -139,12 +135,6 @@ export default function VerifyPage() {
           </CardContent>
         </Card>
 
-        <button
-          onClick={() => router.push('/login')}
-          className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors py-2 text-center"
-        >
-          Пропустить →
-        </button>
       </div>
     </div>
   )
