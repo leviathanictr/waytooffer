@@ -56,6 +56,7 @@ services:
 
 volumes:
   db_data:
+  postgres_data:
   certbot_www:
   certbot_certs:
 
