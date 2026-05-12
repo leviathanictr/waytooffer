@@ -1,6 +1,51 @@
 from __future__ import annotations
 
 import pathlib
+import re
+import unicodedata
+
+
+# ---------------------------------------------------------------------------
+# Text normalization
+# ---------------------------------------------------------------------------
+# LLM output (and web-scraped vacancy text the LLM paraphrases) sometimes
+# contains invisible Unicode format characters — zero-width space (U+200B),
+# zero-width joiner/non-joiner (U+200C/D), bidi marks (U+200E/F), BOM/word
+# joiner (U+FEFF/U+2060), soft hyphen (U+00AD), variation selectors, etc.
+# Those characters produce no glyph when rendered, so when the model emits
+# one in place of a real space the PDF shows "разработалсистему" instead of
+# "разработал систему" — the spaces look "missing". Replace each such
+# codepoint with a regular space (so word separation is preserved whether
+# the char appeared standalone or next to a real space) and then collapse
+# runs of horizontal whitespace. Newlines and regular spaces (Zs) including
+# NBSP are untouched.
+
+_KEEP_CONTROL = {"\t", "\n", "\r"}
+
+
+def _clean_text(value: str) -> str:
+    if not value:
+        return value
+    normalized = unicodedata.normalize("NFC", value)
+    replaced = "".join(
+        ch if ch in _KEEP_CONTROL or unicodedata.category(ch) not in ("Cf", "Cc")
+        else " "
+        for ch in normalized
+    )
+    # Collapse runs of horizontal whitespace introduced by the replacement,
+    # but preserve newlines so paragraph structure survives.
+    return re.sub(r"[^\S\n]{2,}", " ", replaced)
+
+
+def _clean_resume_data(data):
+    if isinstance(data, str):
+        return _clean_text(data)
+    if isinstance(data, dict):
+        return {k: _clean_resume_data(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [_clean_resume_data(v) for v in data]
+    return data
+
 
 # ---------------------------------------------------------------------------
 # Font discovery
@@ -265,6 +310,7 @@ def _render_weasyprint(html: str) -> bytes:
 # ---------------------------------------------------------------------------
 
 def generate_pdf(resume_data: dict) -> bytes:
+    resume_data = _clean_resume_data(resume_data)
     try:
         return _render_weasyprint(_build_html(resume_data))
     except Exception:
