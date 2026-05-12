@@ -3,11 +3,21 @@ services:
   backend:
     build: ./backend
     env_file: ./backend/.env
-    environment:
-      DATABASE_URL: sqlite:////data/resume_builder.db
     volumes:
       - db_data:/data
     restart: unless-stopped
+    networks:
+      - internal
+
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: resume
+      POSTGRES_PASSWORD: resume_pass
+      POSTGRES_DB: resume_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - internal
 

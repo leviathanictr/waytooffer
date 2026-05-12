@@ -5,9 +5,15 @@ from sqlalchemy.orm import sessionmaker
 import os
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./resume_builder.db")
 
+# If using SQLite, set the `check_same_thread` connect arg. For other DBs (Postgres),
+# leave connect_args empty.
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    connect_args=connect_args,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
