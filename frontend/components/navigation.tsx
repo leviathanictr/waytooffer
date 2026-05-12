@@ -28,7 +28,7 @@ export function Navigation() {
   return (
     <>
       {/* Desktop top nav */}
-      <nav className="hidden md:flex items-center justify-between px-6 h-16 border-b border-border bg-white sticky top-0 z-10">
+      <nav className="hidden md:flex items-center justify-between px-6 h-16 border-b border-border bg-card sticky top-0 z-10">
         <Link href="/" className="font-bold text-lg text-primary">WayToOffer</Link>
         <div className="flex items-center gap-6">
           {NAV_ITEMS.map(({ href, label }) => (
@@ -54,7 +54,7 @@ export function Navigation() {
       </nav>
 
       {/* Mobile bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-border">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-10 bg-card border-t border-border">
         <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
             <Link

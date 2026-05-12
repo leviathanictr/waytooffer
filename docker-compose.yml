@@ -15,7 +15,6 @@ services:
     build:
       context: ./frontend
       args:
-        # Замени на свой домен
         NEXT_PUBLIC_API_URL: https://api.waytooffer.ru
     restart: unless-stopped
     networks:
@@ -42,7 +41,7 @@ services:
     volumes:
       - certbot_www:/var/www/certbot
       - certbot_certs:/etc/letsencrypt
-    # Run manually: docker compose run --rm certbot certonly ...
+    # Первичный запуск: docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email YOUR@EMAIL.COM --agree-tos --no-eff-email -d waytooffer.ru -d api.waytooffer.ru
     entrypoint: /bin/sh -c "trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew; done"
 
 volumes:

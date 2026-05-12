@@ -10,7 +10,7 @@ interface ResumePreviewProps {
 
 export function ResumePreview({ data }: ResumePreviewProps) {
   return (
-    <div className="bg-white rounded-xl ring-1 ring-foreground/10 overflow-hidden">
+    <div className="bg-card rounded-xl ring-1 ring-foreground/10 overflow-hidden">
       {/* Header */}
       <div className="bg-primary px-6 py-6 text-white">
         <h1 className="text-2xl font-bold">{data.personal.name || 'Имя не указано'}</h1>

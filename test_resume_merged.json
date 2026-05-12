@@ -1,0 +1,92 @@
+{
+  "personal": {
+    "name": "Лев Степанов",
+    "city": "Москва",
+    "phone": "+79199706925",
+    "email": "stepanoff.lvenok@yandex.com",
+    "links": [
+      "https://github.com/leviathanictr",
+      "https://t.me/leviathanictr"
+    ],
+    "about": "Стажераналитик с математическим бэкграундом. Разрабатываю SQLзапросы и ETLпайплайны, строю A/Bтесты и продуктовые BIдашборды. Финтехпродукты и Таймменеджмент — мой профиль."
+  },
+  "education": [
+    {
+      "university": "Центральный Университет",
+      "faculty": "МКН",
+      "speciality": "Искусственный интеллект",
+      "year": "2024-2028",
+      "achievements": "Дисциплины: ML, SQL, Python, алгоритмы."
+    }
+  ],
+  "experience": [
+    {
+      "title": "Telegramбот расписания",
+      "role": "Автор Telegramбота",
+      "description": "Реализовал JSтрекинг, RFMсегментацию, A/Bтесты, BIдашборды. Финтехпродукты и бизнесзадачи.",
+      "result": "Повысил D7удержание на 10пп."
+    },
+    {
+      "title": "ETLпайплайн waytooffer",
+      "role": "Дата-аналитик",
+      "description": "Спроектировал схему БД, реализовал ETLпайплайн с валидациями. Бизнесаналитика.",
+      "result": "Снизил дубликаты до 2%."
+    },
+    {
+      "title": "Геоаналитика coordinates",
+      "role": "Аналитик данных",
+      "description": "Кластеризация kmeans/DBSCAN, реверсгеокодирование, BIвизуализация.",
+      "result": "Выделил 3 кластера с трафиком выше медианы на 15%."
+    },
+    {
+      "title": "Кейсчемпионат Т-банка",
+      "role": "Участник",
+      "description": "Финтехрешение, бизнесмодель, юнитэкономика, логитскоринг.",
+      "result": "Топ-10 из 200 команд."
+    },
+    {
+      "title": "Веб-платформа для аналитики",
+      "role": "Разработчик",
+      "description": "Вебприложение на React, бэкенд на Python, BIдашборд, SQLзапросы.",
+      "result": "Запущено в продакшн."
+    }
+  ],
+  "skills": {
+    "hard": [
+      "SQL (PostgreSQL): JOIN, CTE, оконные функции",
+      "Python: pandas, numpy, statsmodels",
+      "A/Bтесты: дизайн, power analysis, контроль SRM",
+      "Продуктовые метрики: CR, CTR, Retention, юнитэкономика",
+      "BIинструменты: Metabase, Power BI, Redash",
+      "ETLпайплайны: валидации, дедупликация, SLA",
+      "JSтрекинг на фронте и серверное проксирование",
+      "Docker, Git, GitHub Actions"
+    ],
+    "soft": [
+      "Структурное мышление",
+      "Гипотезнодоказательный подход",
+      "Четкие коммуникации",
+      "Таймменеджмент"
+    ]
+  },
+  "languages": [
+    {
+      "language": "Русский",
+      "level": "родной"
+    },
+    {
+      "language": "Английский",
+      "level": "B2"
+    }
+  ],
+  "extra": {
+    "projects": [
+      "https://github.com/leviathanictr/coffee-telegram-miniapp",
+      "https://github.com/leviathanictr/waytooffer",
+      "https://github.com/leviathanictr/transfer_to_bd",
+      "https://github.com/leviathanictr/ScheduleBotForSchool",
+      "https://github.com/leviathanictr/coordinates"
+    ],
+    "hobbies": "Финтехподкасты, бег, шахматы, MLстатьи."
+  }
+}

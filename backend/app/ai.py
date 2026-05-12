@@ -27,21 +27,38 @@ CHAT_SYSTEM_PROMPT = """\
 Постоянные данные кандидата (уже известны, НЕ спрашивай их повторно):
 {user_profile}
 
-{github_context}
+{profile_context}
 
 АЛГОРИТМ:
-1. НЕ приветствуй — кандидат уже видел вводное сообщение. Сразу задавай первый вопрос.
-2. Задавай строго по ОДНОМУ вопросу за раз.
-3. Порядок сбора данных:
-   - Опыт: проекты, хакатоны, чемпионаты, стажировки — всё что не указано в профиле
+1. НЕ приветствуй — кандидат уже видел вводное сообщение.
+2. СНАЧАЛА (до вопросов): если в profile_context есть GitHub-репозитории, ссылки или данные по вузу —
+   кратко сообщи что нашёл и спроси, стоит ли включить конкретные находки в резюме.
+   Например: "Вижу у тебя на GitHub проект waytooffer — хочешь упомянуть его?"
+   Если ничего не найдено — сразу переходи к вопросам.
+3. Задавай строго по ОДНОМУ вопросу за раз.
+4. Порядок сбора данных:
+   - Опыт: проекты, хакатоны, чемпионаты, стажировки
    - Навыки — только те, что важны для ЭТОЙ вакансии
-   - Уточняй цифры: "Какое место заняли?", "Что именно делал?", "Какой результат?"
+   - Уточняй детали: "Какой результат?", "Что именно делал?", "Какие технологии?"
    - Хобби, дополнительные ссылки — в конце
-4. Когда все данные собраны — скажи пользователю что готов генерировать.
-   Верни JSON: {{"status": "complete", "data": {{<все собранные данные>}}}}
+5. ЗАВЕРШЕНИЕ ДИАЛОГА — СТРОГО ОБЯЗАТЕЛЬНО:
+   Если кандидат говорит "генерируй", "делай резюме", "готово", "хватит", "всё", "давай", "создай" —
+   ИЛИ ты сам считаешь что собрал достаточно данных —
+   верни ТОЛЬКО этот JSON (никакого другого текста, никакого резюме текстом, никаких вводных):
+   {{"status": "complete", "data": {{<все собранные данные в свободном формате>}}}}
+   ЗАПРЕЩЕНО: делать текстовое резюме, подводить итоги, задавать уточняющие вопросы после этого момента.
 
-СТИЛЬ: дружелюбный, конкретный, без воды. Не задавай несколько вопросов сразу.
-ВАЖНО: НЕ выдумывай данные (курсы, предметы, достижения). Используй ТОЛЬКО то, что сказал кандидат.\
+ПОЛИТИКА ЭФФЕКТИВНОСТИ (главное правило):
+Твоя цель — максимально сильное резюме, а не нотариальное заверение фактов.
+- МОЖНО и НУЖНО предлагать сильные формулировки, усиливать глаголы, добавлять трудно проверяемые детали.
+- Если кандидат просит добавить впечатляющий опыт — ПОМОГАЙ, не отказывай. Просто всегда добавляй в конце
+  пометку: "(легко проверить)" или "(сложно проверить)".
+  "(легко проверить)" — конкретные даты, названия компаний, места в конкурсах, точные числа.
+  "(сложно проверить)" — описание роли, инициативы, soft skills, вклад в обсуждения, общие результаты.
+- НЕЛЬЗЯ выдумывать: точные даты, названия компаний/вузов, места в соревнованиях, которые кандидат не называл.
+- Никогда не говори "я должен быть честным" или "не могу добавить это" — просто оцени риск.
+
+СТИЛЬ: дружелюбный, конкретный, без воды. Не задавай несколько вопросов сразу.\
 """
 
 GENERATE_PROMPT = """\
@@ -57,25 +74,27 @@ GENERATE_PROMPT = """\
 2. Составь резюме строго по JSON-структуре ниже.
 3. Используй глаголы действия: "разработал", "оптимизировал", "реализовал", "повысил".
 4. Добавляй цифры и результаты везде, где они есть.
-5. Если данных не хватает — используй учебные проекты или ставь "—".
+5. Если данных для поля нет — НЕ пиши "—", НЕ пиши "null", НЕ пиши "не указано".
+   Используй пустую строку "" или пустой массив []. Лучше пропустить поле, чем ставить прочерк.
 6. Hard skills — только те, что релевантны вакансии.
 7. Раздел "about" — кто кандидат, что умеет, какую пользу принесёт компании.
 8. Опыт — от самого релевантного к наименее.
 9. IT-вакансия → акцент на технических навыках. Бизнес → акцент на софт-скиллах.
 
 БАЛАНС РЕАЛЬНОСТЬ / ТВОРЧЕСТВО:
-Строго фактическое (80%) — НЕ выдумывать:
-  имена, даты, места в чемпионатах, названия компаний / вузов, конкретные цифры,
-  технологии не упомянутые кандидатом, названия курсов и сертификатов.
+Нельзя выдумывать (легко проверить):
+  конкретные даты, названия компаний/вузов, места в чемпионатах, точные числа, которые кандидат не называл.
 
-Допустимое обогащение (~20%) — только то, что нельзя проверить фактически:
-  • Стиль и глаголы: усиляй формулировки ("участвовал" → "разработал совместно с командой"),
-    добавляй профессиональные глаголы действия.
-  • Общие soft skills ("ответственность", "инициативность", "обучаемость") — если вписываются
-    в контекст.
-  • Краткое описание роли в проекте — если кандидат упомянул проект, но не описал детали.
+Свободно обогащай (пиши уверенно, это норма для резюме):
+  • Усиляй глаголы: "участвовал" → "разработал совместно с командой", "помогал" → "реализовал"
+  • Все уместные soft skills из контекста — добавляй без ограничений
+  • Если кандидат назвал проект — опиши что МОГ делать специалист такого уровня в таком проекте
+  • Общие результаты без точных цифр: "улучшил производительность", "оптимизировал процесс"
+  • Курсы вуза из учебной программы — если специальность известна, добавь типичные дисциплины
 
-Главное правило: не добавляй ничего, что кандидат мог бы опровергнуть на собеседовании.
+ТИПОГРАФИКА: всегда ставь дефис между латинскими словами/аббревиатурами и русскими словами.
+Правильно: "Frontend-разработчик", "SQL-запрос", "A/B-тест", "push-уведомление", "BI-дашборд", "RFM-сегментация", "full-stack".
+НИКОГДА не пиши слитно: "Frontendразработчик", "SQLзапрос", "A/Bтест" — это грубая ошибка.
 
 ФОРМАТ: верни ТОЛЬКО валидный JSON без markdown-обёртки и пояснений:
 {{
@@ -137,6 +156,16 @@ def profile_to_str(profile: models.Profile | None) -> str:
     return "\n".join(lines) if lines else "Данные профиля не заполнены."
 
 
+def _safe_format(template: str, **kwargs) -> str:
+    """Format template safely even when values contain curly braces (e.g. JSON)."""
+    _L = "\x00LB\x00"
+    _R = "\x00RB\x00"
+    result = template.replace("{{", _L).replace("}}", _R)
+    for k, v in kwargs.items():
+        result = result.replace("{" + k + "}", str(v))
+    return result.replace(_L, "{").replace(_R, "}")
+
+
 def _fetch_github_context(profile: models.Profile | None) -> str:
     """Fetch real GitHub repo list if profile has a GitHub link."""
     if not profile:
@@ -181,6 +210,89 @@ def _fetch_github_context(profile: models.Profile | None) -> str:
     return ""
 
 
+def _fetch_portfolio_context(profile: models.Profile | None) -> str:
+    """Try to fetch useful text from non-GitHub portfolio links."""
+    if not profile:
+        return ""
+    import re
+    import requests as _req
+
+    urls: list[str] = []
+    if profile.link_portfolio and "github.com" not in (profile.link_portfolio or "").lower():
+        urls.append(profile.link_portfolio)
+    try:
+        for lnk in json.loads(profile.links or "[]"):
+            if lnk and "github.com" not in str(lnk).lower():
+                urls.append(str(lnk))
+    except Exception:
+        pass
+
+    results: list[str] = []
+    for url in urls[:2]:
+        try:
+            resp = _req.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=4, allow_redirects=True)
+            if resp.status_code == 200:
+                text = re.sub(r"<[^>]+>", " ", resp.text)
+                text = re.sub(r"\s+", " ", text).strip()[:600]
+                if len(text) > 50:
+                    results.append(f"Содержимое сайта {url}:\n{text}")
+        except Exception:
+            pass
+    return "\n".join(results)
+
+
+def _fetch_university_context(profile: models.Profile | None) -> str:
+    """Search for course list of the user's university speciality."""
+    if not profile:
+        return ""
+    university = (profile.university or "").strip()
+    speciality = (profile.speciality or "").strip()
+    faculty = (profile.faculty or "").strip()
+    if not university:
+        return ""
+
+    import re
+    import requests as _req
+
+    query = f"{university} {faculty} {speciality} учебный план дисциплины курсы программа"
+    try:
+        resp = _req.get(
+            "https://html.duckduckgo.com/html/",
+            params={"q": query, "kl": "ru-ru"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; ResumeBot/1.0)", "Accept-Language": "ru-RU,ru;q=0.9"},
+            timeout=6,
+        )
+        if resp.status_code == 200:
+            snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', resp.text, re.DOTALL)
+            clean = [re.sub(r"<[^>]+>", "", s).strip() for s in snippets[:4] if s.strip()]
+            clean = [c for c in clean if len(c) > 30][:3]
+            if clean:
+                label = f"«{speciality}»" if speciality else f"«{faculty}»" if faculty else ""
+                return (
+                    f"Программа {label} в «{university}» (из поиска):\n"
+                    + "\n".join(clean)
+                    + "\nУточни у кандидата, какие из этих курсов он прошёл или проходит сейчас."
+                )
+    except Exception:
+        pass
+    return ""
+
+
+def _fetch_full_profile_context(profile: models.Profile | None) -> str:
+    """Combine GitHub repos + portfolio + university context into one string."""
+    parts: list[str] = []
+    gh = _fetch_github_context(profile)
+    if gh:
+        parts.append(gh)
+    pf = _fetch_portfolio_context(profile)
+    if pf:
+        parts.append(pf)
+    uni = _fetch_university_context(profile)
+    if uni:
+        parts.append(uni)
+    return "\n\n".join(parts)
+
+
 def _extract_vacancy_requirements(vacancy_text: str) -> str:
     """
     Very lightweight extraction: return the first 600 characters of the vacancy text
@@ -209,6 +321,186 @@ def _strip_markdown_json(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+def generate_resume_threaded(session_id: str, job: object) -> None:
+    """Run resume generation in a background thread, storing result in *job*."""
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        resume = generate_resume(session_id, db)
+        # Convert ORM object to dict for the job result
+        import json as _json
+        data_dict: dict = {}
+        try:
+            data_dict = _json.loads(resume.data)
+        except Exception:
+            pass
+        result = {
+            "resume_id": resume.id,
+            "session_id": resume.session_id,
+            "data": data_dict,
+            "pdf_url": f"/resume/{resume.id}/pdf",
+            "created_at": resume.created_at.isoformat() if resume.created_at else None,
+        }
+        job.finish(is_complete=True, result=result)  # type: ignore[attr-defined]
+    except Exception as e:
+        job.fail(str(e))  # type: ignore[attr-defined]
+    finally:
+        db.close()
+
+
+def chat_response_threaded(session_id: str, user_message: str, job: object) -> None:
+    """Run the chat completion in a background thread, updating *job* in place."""
+    from app.database import SessionLocal
+    from app import jobs as _jobs  # noqa: F401 — type hint only
+    db = SessionLocal()
+    try:
+        session = db.query(models.Session).filter(models.Session.id == session_id).first()
+        if session is None:
+            job.fail("Session not found")
+            return
+
+        profile = (
+            db.query(models.Profile)
+            .filter(models.Profile.user_id == session.user_id)
+            .first()
+        )
+
+        user_msg_obj = models.Message(
+            id=str(uuid.uuid4()),
+            session_id=session_id,
+            role="user",
+            content=user_message,
+            created_at=datetime.utcnow(),
+        )
+        db.add(user_msg_obj)
+        db.commit()
+
+        history = (
+            db.query(models.Message)
+            .filter(models.Message.session_id == session_id)
+            .order_by(models.Message.created_at)
+            .all()
+        )
+
+        system_content = _safe_format(
+            CHAT_SYSTEM_PROMPT,
+            vacancy_text=session.vacancy_text or "",
+            vacancy_requirements=_extract_vacancy_requirements(session.vacancy_text or ""),
+            user_profile=profile_to_str(profile),
+            profile_context=_fetch_full_profile_context(profile),
+        )
+
+        messages = [{"role": "system", "content": system_content}]
+        for msg in history:
+            messages.append({"role": msg.role, "content": msg.content})
+
+        full_reply = ""
+        try:
+            stream = client.chat.completions.create(model=MODEL, messages=messages, stream=True)
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content or ""
+                if delta:
+                    full_reply += delta
+                    job.append(delta)
+        except Exception as e:
+            job.fail(str(e))
+            return
+
+        is_complete = '"status": "complete"' in full_reply or '"status":"complete"' in full_reply
+
+        assistant_msg = models.Message(
+            id=str(uuid.uuid4()),
+            session_id=session_id,
+            role="assistant",
+            content=full_reply,
+            created_at=datetime.utcnow(),
+        )
+        db.add(assistant_msg)
+        if is_complete:
+            session.is_complete = True
+            # Clear the streamed JSON from job content so the frontend
+            # never sees the raw {"status":"complete",...} blob.
+            with job._lock:
+                job.content = ""
+        db.commit()
+
+        job.finish(is_complete)
+    except Exception as e:
+        job.fail(str(e))
+    finally:
+        db.close()
+
+
+def chat_response_stream(session_id: str, user_message: str, db: DBSession):
+    """Streaming version — yields SSE lines, then finalizes DB."""
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if session is None:
+        yield 'data: {"error": "Session not found"}\n\n'
+        return
+
+    profile = (
+        db.query(models.Profile)
+        .filter(models.Profile.user_id == session.user_id)
+        .first()
+    )
+
+    user_msg_obj = models.Message(
+        id=str(uuid.uuid4()),
+        session_id=session_id,
+        role="user",
+        content=user_message,
+        created_at=datetime.utcnow(),
+    )
+    db.add(user_msg_obj)
+    db.commit()
+
+    history = (
+        db.query(models.Message)
+        .filter(models.Message.session_id == session_id)
+        .order_by(models.Message.created_at)
+        .all()
+    )
+
+    system_content = CHAT_SYSTEM_PROMPT.format(
+        vacancy_text=session.vacancy_text or "",
+        vacancy_requirements=_extract_vacancy_requirements(session.vacancy_text or ""),
+        user_profile=profile_to_str(profile),
+        github_context=_fetch_github_context(profile),
+    )
+
+    messages = [{"role": "system", "content": system_content}]
+    for msg in history:
+        messages.append({"role": msg.role, "content": msg.content})
+
+    full_reply = ""
+    try:
+        stream = client.chat.completions.create(model=MODEL, messages=messages, stream=True)
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content or ""
+            if delta:
+                full_reply += delta
+                yield f"data: {json.dumps({'delta': delta})}\n\n"
+    except Exception as e:
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        return
+
+    is_complete = '"status": "complete"' in full_reply or '"status":"complete"' in full_reply
+
+    assistant_msg = models.Message(
+        id=str(uuid.uuid4()),
+        session_id=session_id,
+        role="assistant",
+        content=full_reply,
+        created_at=datetime.utcnow(),
+    )
+    db.add(assistant_msg)
+    if is_complete:
+        session.is_complete = True
+    db.commit()
+
+    yield f"data: {json.dumps({'done': True, 'is_complete': is_complete})}\n\n"
+
 
 def chat_response(session_id: str, user_message: str, db: DBSession) -> dict:
     """
@@ -256,13 +548,13 @@ def chat_response(session_id: str, user_message: str, db: DBSession) -> dict:
     vacancy_text = session.vacancy_text or "Описание вакансии не предоставлено."
     vacancy_requirements = _extract_vacancy_requirements(vacancy_text)
     user_profile_str = profile_to_str(profile)
-    github_context = _fetch_github_context(profile)
 
-    system_content = CHAT_SYSTEM_PROMPT.format(
+    system_content = _safe_format(
+        CHAT_SYSTEM_PROMPT,
         vacancy_text=vacancy_text,
         vacancy_requirements=vacancy_requirements,
         user_profile=user_profile_str,
-        github_context=github_context,
+        profile_context=_fetch_full_profile_context(profile),
     )
 
     messages = [{"role": "system", "content": system_content}]
@@ -356,7 +648,8 @@ def generate_resume(session_id: str, db: DBSession) -> models.Resume:
     vacancy_text = session.vacancy_text or "Описание вакансии не предоставлено."
     user_profile_str = profile_to_str(profile)
 
-    prompt = GENERATE_PROMPT.format(
+    prompt = _safe_format(
+        GENERATE_PROMPT,
         vacancy_text=vacancy_text,
         user_profile=user_profile_str,
         candidate_data=candidate_data_str,

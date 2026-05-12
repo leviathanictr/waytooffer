@@ -8,6 +8,47 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ResumePreview } from '@/components/resume-preview'
 import { session as sessionApi } from '@/lib/api'
 import { isAuthenticated, getAccessToken } from '@/lib/auth'
+
+async function sendAndPoll(
+  sessionId: string,
+  text: string,
+  onContent: (content: string) => void,
+): Promise<{ is_complete: boolean }> {
+  const token = getAccessToken()
+  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
+
+  const postRes = await fetch(`${base}/session/${sessionId}/message`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ text }),
+  })
+  if (!postRes.ok) throw new Error(`HTTP ${postRes.status}`)
+  const { job_id } = await postRes.json()
+
+  return new Promise((resolve, reject) => {
+    const interval = setInterval(async () => {
+      try {
+        const pollRes = await fetch(`${base}/session/${sessionId}/poll/${job_id}`, { headers })
+        if (!pollRes.ok) { clearInterval(interval); reject(new Error(`Poll HTTP ${pollRes.status}`)); return }
+        const data = await pollRes.json()
+        // Never show intermediate content — only set message once when fully done
+        // (prevents partial/full JSON from leaking into chat during streaming)
+        if (data.status === 'done') {
+          clearInterval(interval)
+          // Only show content for normal replies (not JSON completion blobs)
+          if (!data.is_complete && data.content) onContent(data.content)
+          resolve({ is_complete: data.is_complete })
+          return
+        }
+        if (data.status === 'error') { clearInterval(interval); reject(new Error(data.error || 'AI error')) }
+      } catch (e) { clearInterval(interval); reject(e) }
+    }, 600)
+  })
+}
 import { Send, Download, RotateCcw, Loader2 } from 'lucide-react'
 import type { Session, Resume, ChatMessage } from '@/lib/types'
 
@@ -93,34 +134,72 @@ export default function HomePage() {
     }
   }
 
+  async function triggerGenerate() {
+    if (!currentSession) return
+    setGenerating(true)
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const token = getAccessToken()
+      const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+
+      const startRes = await fetch(`${base}/session/${currentSession.session_id}/generate`, { method: 'POST', headers })
+      if (!startRes.ok) throw new Error(`HTTP ${startRes.status}`)
+      const { job_id } = await startRes.json()
+
+      await new Promise<void>((resolve, reject) => {
+        const deadline = Date.now() + 5 * 60 * 1000 // 5 min timeout
+        const iv = setInterval(async () => {
+          if (Date.now() > deadline) { clearInterval(iv); reject(new Error('Timeout')); return }
+          try {
+            const r = await fetch(`${base}/session/${currentSession.session_id}/generate-poll/${job_id}`, { headers })
+            if (!r.ok) { clearInterval(iv); reject(new Error(`Poll ${r.status}`)); return }
+            const d = await r.json()
+            if (d.status === 'done') { clearInterval(iv); setResume(d.result); setPageState('done'); resolve() }
+            if (d.status === 'error') { clearInterval(iv); reject(new Error(d.error || 'Generate error')) }
+          } catch (e) { clearInterval(iv); reject(e) }
+        }, 1000)
+      })
+    } catch {
+      toast.error('Ошибка генерации резюме. Попробуйте ещё раз.')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   async function handleSendMessage() {
     if (!currentSession || !messageInput.trim() || aiLoading) return
 
     const text = messageInput.trim()
     setMessageInput('')
-    setMessages(prev => [...prev, { role: 'user', content: text }])
+    setMessages(prev => [...prev, { role: 'user', content: text }, { role: 'assistant', content: '' }])
     setAiLoading(true)
 
     try {
-      const { data } = await sessionApi.sendMessage(currentSession.session_id, text)
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+      const { is_complete } = await sendAndPoll(
+        currentSession.session_id,
+        text,
+        (content) => setMessages(prev => {
+          const next = [...prev]
+          next[next.length - 1] = { role: 'assistant', content }
+          return next
+        }),
+      )
 
-      if (data.is_complete) {
+      if (is_complete) {
+        // Remove last assistant message entirely (contains raw JSON schema)
+        setMessages(prev => {
+          const next = [...prev]
+          if (next.length > 0 && next[next.length - 1].role === 'assistant') {
+            next.pop()
+          }
+          return next
+        })
         setAiLoading(false)
-        setGenerating(true)
-        try {
-          const { data: resumeData } = await sessionApi.generate(currentSession.session_id)
-          setResume(resumeData)
-          setPageState('done')
-        } catch {
-          toast.error('Ошибка генерации резюме. Попробуйте ещё раз.')
-        } finally {
-          setGenerating(false)
-        }
+        await triggerGenerate()
       }
     } catch {
       toast.error('Ошибка отправки сообщения')
-      setMessages(prev => prev.slice(0, -1))
+      setMessages(prev => prev.slice(0, -2))
       setMessageInput(text)
     } finally {
       setAiLoading(false)
@@ -157,7 +236,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="bg-white rounded-xl ring-1 ring-foreground/10 p-6">
+          <div className="bg-card rounded-xl ring-1 ring-foreground/10 p-6">
             <Tabs value={inputTab} onValueChange={(v) => setInputTab(String(v))}>
               <TabsList className="w-full mb-4">
                 <TabsTrigger value="url" className="flex-1">
@@ -239,7 +318,7 @@ export default function HomePage() {
     return (
       <div className="flex-1 flex flex-col max-w-2xl mx-auto w-full">
         {/* Chat header */}
-        <div className="px-4 py-3 border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 md:top-16 z-10">
+        <div className="px-4 py-3 sticky top-0 md:top-16 z-10 bg-background">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-semibold text-sm">Идёт сбор данных</h2>
@@ -277,7 +356,7 @@ export default function HomePage() {
                 className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                   msg.role === 'user'
                     ? 'bg-primary text-white rounded-br-sm'
-                    : 'bg-white ring-1 ring-foreground/10 rounded-bl-sm'
+                    : 'bg-card ring-1 ring-foreground/10 rounded-bl-sm'
                 }`}
               >
                 {msg.content}
@@ -290,7 +369,7 @@ export default function HomePage() {
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold shrink-0">
                 AI
               </div>
-              <div className="bg-white ring-1 ring-foreground/10 rounded-2xl rounded-bl-sm px-4 py-3">
+              <div className="bg-card ring-1 ring-foreground/10 rounded-2xl rounded-bl-sm px-4 py-3">
                 <div className="flex gap-1 items-center">
                   <span className="text-sm text-muted-foreground">AI думает</span>
                   <span className="flex gap-1 ml-1">
@@ -307,7 +386,22 @@ export default function HomePage() {
         </div>
 
         {/* Input */}
-        <div className="px-4 py-3 border-t border-border bg-white sticky bottom-0 md:bottom-0">
+        <div className="px-4 py-3 sticky bottom-0 md:bottom-0 bg-background">
+          <div className="flex justify-center mb-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setMessages(prev => [...prev, { role: 'assistant', content: 'Начинаю составлять резюме по собранным данным...' }])
+                triggerGenerate()
+              }}
+              disabled={aiLoading || generating}
+              className="text-sm gap-2 text-primary border-primary/40 hover:bg-primary/5"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Сгенерировать резюме
+            </Button>
+          </div>
           <div className="flex gap-2 items-end max-w-2xl mx-auto">
             <textarea
               ref={textareaRef}

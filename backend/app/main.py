@@ -12,7 +12,11 @@ load_dotenv()  # Load .env before anything that reads env-vars
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+import threading
+
 from fastapi.responses import Response
+
+from app import jobs as _jobs
 from sqlalchemy.orm import Session as DBSession
 
 from app import models
@@ -31,7 +35,6 @@ from app.schemas import (
     ChangeEmailRequest,
     ChangePasswordRequest,
     ChangePhoneRequest,
-    ChatResponse,
     EducationItem,
     LoginRequest,
     MessageRequest,
@@ -56,8 +59,8 @@ from app.verification import (
     send_email_code,
     verify_code,
 )
-from app.ai import chat_response as ai_chat_response
-from app.ai import generate_resume as ai_generate_resume
+from app.ai import chat_response_threaded as ai_chat_response_threaded
+from app.ai import generate_resume_threaded as ai_generate_resume_threaded
 from app.parser import parse_vacancy
 from app.pdf import generate_pdf
 
@@ -182,6 +185,7 @@ def _resume_to_list_item(resume: models.Resume) -> ResumeListItem:
 
 @app.post("/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DBSession = Depends(get_db)):
+    body.email = body.email.strip().lower()
     if body.password != body.password_confirm:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -222,7 +226,12 @@ def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DBSes
 
 @app.post("/auth/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: DBSession = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == body.login).first()
+    from sqlalchemy import func as _func
+    user = (
+        db.query(models.User)
+        .filter(_func.lower(models.User.email) == body.login.strip().lower())
+        .first()
+    )
 
     if user is None or not verify_password(body.password, user.hashed_password):
         raise HTTPException(
@@ -525,39 +534,87 @@ def create_session(
     )
 
 
-@app.post("/session/{session_id}/message", response_model=ChatResponse)
+@app.post("/session/{session_id}/message")
 def send_message(
     session_id: str,
     body: MessageRequest,
     current_user: Annotated[models.User, Depends(get_current_user)],
     db: DBSession = Depends(get_db),
 ):
-    # Verify session belongs to current user
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     if session.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    result = ai_chat_response(session_id, body.text, db)
-    return ChatResponse(reply=result["reply"], is_complete=result["is_complete"])
+    job_id, job = _jobs.create()
+    t = threading.Thread(
+        target=ai_chat_response_threaded,
+        args=(session_id, body.text, job),
+        daemon=True,
+    )
+    t.start()
+    return {"job_id": job_id}
 
 
-@app.post("/session/{session_id}/generate", response_model=ResumeResponse)
+@app.get("/session/{session_id}/poll/{job_id}")
+def poll_message(
+    session_id: str,
+    job_id: str,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+    db: DBSession = Depends(get_db),
+):
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return job.snapshot()
+
+
+@app.post("/session/{session_id}/generate")
 def generate_resume_endpoint(
     session_id: str,
     current_user: Annotated[models.User, Depends(get_current_user)],
     db: DBSession = Depends(get_db),
 ):
-    # Verify session belongs to current user
     session = db.query(models.Session).filter(models.Session.id == session_id).first()
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     if session.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    resume = ai_generate_resume(session_id, db)
-    return _resume_to_response(resume)
+    job_id, job = _jobs.create()
+    t = threading.Thread(
+        target=ai_generate_resume_threaded,
+        args=(session_id, job),
+        daemon=True,
+    )
+    t.start()
+    return {"job_id": job_id}
+
+
+@app.get("/session/{session_id}/generate-poll/{job_id}")
+def generate_poll(
+    session_id: str,
+    job_id: str,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+    db: DBSession = Depends(get_db),
+):
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return job.snapshot()
 
 
 # ---------------------------------------------------------------------------

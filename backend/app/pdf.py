@@ -1,6 +1,40 @@
 from __future__ import annotations
 
 import pathlib
+import re
+
+
+def _fix_typography(text: str) -> str:
+    """Fix missing hyphens in compound words (Latin→Cyrillic and common Cyrillic prefixes)."""
+    if not text:
+        return text
+    # NOTE: use actual Cyrillic chars in patterns — Python re does NOT support \uXXXX in raw strings
+    # 1. Latin letter → Cyrillic: "SQLзапрос"→"SQL-запрос", "A/Bтест"→"A/B-тест"
+    text = re.sub(r'([A-Za-z])([а-яёА-ЯЁ])', r'\1-\2', text)
+    # Digit → 3+ Cyrillic chars (avoids "10пп", "1М+" false positives)
+    text = re.sub(r'([0-9])([а-яёА-ЯЁ]{3,})', r'\1-\2', text)
+    # 2. Always-compound Cyrillic prefixes
+    text = re.sub(
+        r'\b(веб|кейс|юнит|тайм|фитнес|питч|финтех|онлайн|реверс|логит)(?![-\s])([А-ЯЁа-яё])',
+        r'\1-\2', text, flags=re.IGNORECASE,
+    )
+    # 3. Conditional prefixes — only before roots ≥4 Cyrillic chars
+    #    NOTE: "продукт" removed — "продуктовый" is one word, not a compound
+    text = re.sub(
+        r'\b(бизнес|контент|медиа|нетворк)(?![-\s])([А-ЯЁа-яё]{4,})',
+        r'\1-\2', text, flags=re.IGNORECASE,
+    )
+    # 4. Specific fixes
+    text = re.sub(r'\b([Dd]ata)\s*[Dd]riven\b', 'Data-driven', text)
+    text = re.sub(r'\b([Dd]ata)\s*[Ss]cience\b', 'Data Science', text)
+    text = re.sub(r'\b([Dd]ata)\s*[Ss]cientist\b', 'Data Scientist', text)
+    text = re.sub(r'\b([Dd]ata)\s*[Aa]nalyst\b', 'Data Analyst', text)
+    text = re.sub(r'(?i)\bRESTful\s*API\b', 'REST API', text)
+    text = re.sub(r'(?i)\bRESTful(?=[A-Z])', 'REST ', text)
+    text = re.sub(r'(?i)\bпричинно\s*следственн', 'причинно-следственн', text)
+    text = re.sub(r'(?i)\bscikitlearn\b', 'scikit-learn', text)
+    text = re.sub(r'\bТ([Бб]анк)', r'Т-\1', text)
+    return text
 
 # ---------------------------------------------------------------------------
 # Font discovery
@@ -56,8 +90,13 @@ def _build_fpdf(data: dict) -> bytes:
     RW  = W - LW - GAP             # right column ≈ 62 mm
     RX  = LM + LW + GAP            # right column X
 
+    _DASH_VALUES = {"—", "–", "-", "−", "null", "None", "undefined", "н/д", "нет"}
+
     def safe(v, default="") -> str:
-        return str(v).strip() if v else default
+        if not v:
+            return default
+        raw = _fix_typography(str(v).strip())
+        return default if raw in _DASH_VALUES else raw
 
     # ── DATA ─────────────────────────────────────────────────────────────────
     p        = data.get("personal") or {}
@@ -226,17 +265,20 @@ def _build_fpdf(data: dict) -> bytes:
         left_sec("Дополнительная информация")
         left_text(hobbies, size=9, after=0)
 
+    left_end_page = pdf.page
     left_end_y = pdf.get_y()
 
     # ── RIGHT COLUMN ─────────────────────────────────────────────────────────
+    # Switch back to page 1 so the right column starts alongside the left column
+    # even when the left column has flowed onto subsequent pages.
+    pdf.page = 1
+
     if hard or soft:
         right_sec("Навыки")
-        for sk in hard:
-            right_line(f"• {sk}", size=9)
-        if hard and soft:
-            r_y += 2
-        for sk in soft:
-            right_line(f"• {sk}", size=9, color=GREY)
+        if hard:
+            right_line(" · ".join(hard), size=8.5, after=2)
+        if soft:
+            right_line(" · ".join(soft), size=8.5, color=GREY, after=2)
         r_y += 3
 
     if languages:
@@ -247,7 +289,9 @@ def _build_fpdf(data: dict) -> bytes:
             if lng:
                 right_line(f"{lng}{f' ({lvl})' if lvl else ''}", size=9)
 
-    pdf.set_y(max(left_end_y, r_y))
+    # Restore cursor to the end of the left column
+    pdf.page = left_end_page
+    pdf.set_y(max(left_end_y, r_y if left_end_page == 1 else left_end_y))
     return bytes(pdf.output())
 
 
@@ -283,7 +327,13 @@ def _build_html(resume_data: dict) -> str:
     languages = resume_data.get("languages") or []
     extra    = resume_data.get("extra") or {}
 
-    def s(v, d=""): return str(v).strip() if v else d
+    _DASH_HTML = {"—", "–", "-", "−", "null", "None", "undefined", "н/д", "нет"}
+
+    def s(v, d=""):
+        if not v:
+            return d
+        raw = _fix_typography(str(v).strip())
+        return d if raw in _DASH_HTML else raw
     def e(t): return t.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
 
     name = e(s(p.get("name"), "Без имени"))
@@ -333,8 +383,12 @@ def _build_html(resume_data: dict) -> str:
         hard=[s(x) for x in (skills.get("hard") or []) if s(x)]
         soft=[s(x) for x in (skills.get("soft") or []) if s(x)]
         if not hard and not soft: return ""
-        rows = "".join(f"<div>• {e(sk)}</div>" for sk in hard+soft)
-        return f'<div class="sec"><div class="sec-t">Навыки</div>{rows}</div>'
+        out = ""
+        if hard:
+            out += f'<div style="font-size:8.5pt;line-height:1.7;margin-bottom:4px">{e(" · ".join(hard))}</div>'
+        if soft:
+            out += f'<div style="font-size:8pt;color:#666;line-height:1.7">{e(" · ".join(soft))}</div>'
+        return f'<div class="sec"><div class="sec-t">Навыки</div>{out}</div>'
 
     def lang_html():
         if not languages: return ""
@@ -349,23 +403,26 @@ def _build_html(resume_data: dict) -> str:
 @page{{size:A4;margin:16mm}}
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:Arial,sans-serif;font-size:9.5pt;line-height:1.45;color:#191919}}
-.header{{display:grid;grid-template-columns:62% 38%;gap:0;border-bottom:2px solid #ccc;padding-bottom:10px;margin-bottom:14px}}
+.header{{overflow:hidden;border-bottom:2px solid #ccc;padding-bottom:10px;margin-bottom:14px}}
 .h-name{{font-size:21pt;font-weight:700;color:#111;line-height:1.1}}
 .about{{font-size:9pt;color:#333;margin-top:6px}}
-.h-contact{{font-size:8.5pt;color:#555;text-align:right;line-height:1.7}}
+.h-contact{{float:right;width:36%;text-align:right;font-size:8.5pt;color:#555;line-height:1.7}}
 .h-contact a{{color:#555;text-decoration:none}}
-.layout{{display:grid;grid-template-columns:62% 38%;gap:0 7mm}}
+.h-main{{overflow:hidden}}
+.layout{{overflow:hidden}}
+.right-col{{float:right;width:36%;padding-left:7mm}}
+.left-col{{overflow:hidden}}
 .sec{{margin-bottom:14px;page-break-inside:avoid}}
 .sec-t{{font-size:9.5pt;font-weight:700;color:#aa1919;text-transform:uppercase;border-bottom:1px solid #ddd;padding-bottom:2px;margin-bottom:6px}}
 .item{{margin-bottom:7px;font-size:9pt}}.d{{color:#666;font-size:8.5pt}}
 a{{color:#1E3A5F;text-decoration:none}}
 </style></head><body>
 <div class="header">
-  <div><div class="h-name">{name}</div>{about_html}</div>
   <div class="h-contact">{contact_html}</div>
+  <div class="h-main"><div class="h-name">{name}</div>{about_html}</div>
 </div>
 <div class="layout">
-  <div>{edu_html()}{proj_html()}{exp_html()}{hob_html()}</div>
-  <div>{skills_html()}{lang_html()}</div>
+  <div class="right-col">{skills_html()}{lang_html()}</div>
+  <div class="left-col">{edu_html()}{proj_html()}{exp_html()}{hob_html()}</div>
 </div>
 </body></html>"""

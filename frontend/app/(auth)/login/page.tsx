@@ -21,7 +21,7 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!form.login.trim()) { setError('Введите телефон или email'); return }
+    if (!form.login.trim()) { setError('Введите email'); return }
     if (!form.password)     { setError('Введите пароль'); return }
 
     setLoading(true)
@@ -39,7 +39,7 @@ export default function LoginPage() {
         } else if (err.response.status === 401) {
           setError('Неверный логин или пароль')
         } else if (err.response.status === 403) {
-          setError('Аккаунт не подтверждён. Пройдите верификацию email и телефона.')
+          setError('Аккаунт не подтверждён. Проверьте почту — письмо с подтверждением.')
         } else {
           setError(`Ошибка сервера: ${err.response.data?.detail || err.response.statusText}`)
         }
@@ -62,14 +62,15 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="login">Телефон или Email</Label>
+              <Label htmlFor="login">Email</Label>
               <Input
                 id="login"
-                type="text"
-                placeholder="+7XXXXXXXXXX или you@example.com"
+                type="email"
+                placeholder="you@example.com"
                 value={form.login}
-                onChange={e => setForm(f => ({ ...f, login: e.target.value }))}
-                autoComplete="username"
+                onChange={e => setForm(f => ({ ...f, login: e.target.value.trim() }))}
+                autoComplete="email"
+                inputMode="email"
               />
             </div>
 
