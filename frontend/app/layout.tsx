@@ -6,10 +6,9 @@ import "./globals.css"
 export const metadata: Metadata = {
   title: "WayToOffer — Резюме под вакансию",
   description: "Создайте идеальное резюме за 5 минут с помощью AI",
-  icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
-  },
+  // Icon is auto-discovered from app/icon.svg (Next.js file convention).
+  // Declaring `icons` in addition to a default app/favicon.ico caused two
+  // competing <link rel="icon"> tags and flicker.
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -209,6 +209,11 @@ def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DBSes
         created_at=datetime.utcnow(),
     )
     db.add(user)
+    # Force INSERT of the user row before adding the child profile so the FK
+    # check on profiles.user_id sees an existing parent. Without this flush
+    # SQLAlchemy can emit the profile INSERT first inside a single transaction
+    # and Postgres raises profiles_user_id_fkey violation.
+    db.flush()
 
     # Create empty profile
     profile = models.Profile(user_id=user_id)
