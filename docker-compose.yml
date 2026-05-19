@@ -5,6 +5,9 @@ services:
     env_file: ./backend/.env
     volumes:
       - db_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - internal
@@ -18,6 +21,12 @@ services:
       POSTGRES_DB: resume_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resume -d resume_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - internal
 
