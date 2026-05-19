@@ -1,12 +1,32 @@
 services:
 
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: resume
+      POSTGRES_PASSWORD: resume_pass
+      POSTGRES_DB: resume_db
+    ports:
+      - "5433:5432"  # host port 5433 to avoid clash with native PG18 on 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resume -d resume_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
   backend:
     build: ./backend
     env_file: ./backend/.env
     environment:
-      DATABASE_URL: sqlite:////data/resume_builder.db
-    volumes:
-      - db_data:/data
+      DATABASE_URL: postgresql+psycopg://resume:resume_pass@postgres:5432/resume_db
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - internal
@@ -34,7 +54,7 @@ services:
       - internal
 
 volumes:
-  db_data:
+  postgres_data:
 
 networks:
   internal:
