@@ -41,8 +41,12 @@ from app.schemas import (
     ProfileResponse,
     ProfileUpdate,
     RefreshRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     RegisterRequest,
     RegisterResponse,
+    RequestVerificationRequest,
+    RequestVerificationResponse,
     ResendVerificationRequest,
     ResumeListItem,
     ResumeResponse,
@@ -57,6 +61,7 @@ from app.schemas import (
 from app.verification import (
     create_verification_code,
     send_email_code,
+    send_password_reset_email,
     verify_code,
 )
 from app.ai import chat_response_threaded as ai_chat_response_threaded
@@ -230,7 +235,7 @@ def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DBSes
 
 
 @app.post("/auth/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: DBSession = Depends(get_db)):
+def login(body: LoginRequest, background_tasks: BackgroundTasks, db: DBSession = Depends(get_db)):
     from sqlalchemy import func as _func
     user = (
         db.query(models.User)
@@ -245,9 +250,18 @@ def login(body: LoginRequest, db: DBSession = Depends(get_db)):
         )
 
     if not user.email_verified or not user.phone_verified:
+        # Send a fresh code so the user can complete verification immediately
+        # without having to find the resend button. Existing unused codes are
+        # invalidated inside create_verification_code so this is idempotent.
+        code = create_verification_code(user.id, "email", db)
+        background_tasks.add_task(send_email_code, user.email, code)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account not verified. Please verify your email and phone number.",
+            detail={
+                "code": "not_verified",
+                "message": "Account not verified. A fresh code was sent to your email.",
+                "user_id": user.id,
+            },
         )
 
     return TokenResponse(
@@ -317,6 +331,38 @@ def verify_phone(body: VerifyPhoneRequest, db: DBSession = Depends(get_db)):
     return VerifyResponse(success=True, message="Телефон подтверждён")
 
 
+@app.post("/auth/request-verification", response_model=RequestVerificationResponse)
+def request_verification(
+    body: RequestVerificationRequest,
+    background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db),
+):
+    """Public lookup-by-email so a user can recover the verify flow on a
+    fresh device or after clearing localStorage. Returns user_id (which the
+    frontend stores so /verify can submit the code) and triggers a fresh
+    email code. Always 404s on unknown email so we don't enumerate accounts."""
+    from sqlalchemy import func as _func
+    email = body.email.strip().lower()
+    user = (
+        db.query(models.User)
+        .filter(_func.lower(models.User.email) == email)
+        .first()
+    )
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account for this email")
+
+    if user.email_verified and user.phone_verified:
+        return RequestVerificationResponse(
+            success=True, user_id=user.id, message="Аккаунт уже подтверждён",
+        )
+
+    code = create_verification_code(user.id, "email", db)
+    background_tasks.add_task(send_email_code, user.email, code)
+    return RequestVerificationResponse(
+        success=True, user_id=user.id, message="Код отправлен на email",
+    )
+
+
 @app.post("/auth/resend-verification", response_model=VerifyResponse)
 def resend_verification(body: ResendVerificationRequest, background_tasks: BackgroundTasks, db: DBSession = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == body.user_id).first()
@@ -330,6 +376,60 @@ def resend_verification(body: ResendVerificationRequest, background_tasks: Backg
     # SMS disabled — phone is auto-verified; ignore resend requests for phone
 
     return VerifyResponse(success=True, message="Код отправлен на email")
+
+
+@app.post("/auth/password-reset/request", response_model=VerifyResponse)
+def password_reset_request(
+    body: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db),
+):
+    """Step 1 of password recovery: email -> code. Always responds 200 with the
+    same message regardless of whether the account exists, so attackers can't
+    enumerate registered emails."""
+    from sqlalchemy import func as _func
+    email = body.email.strip().lower()
+    user = (
+        db.query(models.User)
+        .filter(_func.lower(models.User.email) == email)
+        .first()
+    )
+    if user is not None:
+        code = create_verification_code(user.id, "password_reset", db)
+        background_tasks.add_task(send_password_reset_email, user.email, code)
+    return VerifyResponse(
+        success=True,
+        message="Если аккаунт существует — код выслан на email",
+    )
+
+
+@app.post("/auth/password-reset/confirm", response_model=VerifyResponse)
+def password_reset_confirm(body: PasswordResetConfirm, db: DBSession = Depends(get_db)):
+    """Step 2: validate code + set new password. Receiving the code proves
+    control of the inbox, so we also mark email_verified=True — this rescues
+    users who were stuck in the unverified-and-forgot-password corner."""
+    from sqlalchemy import func as _func
+    if body.new_password != body.new_password_confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match",
+        )
+    email = body.email.strip().lower()
+    user = (
+        db.query(models.User)
+        .filter(_func.lower(models.User.email) == email)
+        .first()
+    )
+    if user is None or not verify_code(user.id, "password_reset", body.code, db):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверный или просроченный код",
+        )
+
+    user.hashed_password = hash_password(body.new_password)
+    user.email_verified = True
+    db.commit()
+    return VerifyResponse(success=True, message="Пароль изменён, войдите с новым")
 
 
 @app.post("/auth/change-password", status_code=status.HTTP_200_OK)

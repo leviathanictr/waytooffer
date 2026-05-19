@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { auth } from '@/lib/api'
-import { saveTokens } from '@/lib/auth'
+import { saveTokens, saveUserId } from '@/lib/auth'
 import { Loader2 } from 'lucide-react'
 import axios from 'axios'
 
@@ -39,6 +39,16 @@ export default function LoginPage() {
         } else if (err.response.status === 401) {
           setError('Неверный логин или пароль')
         } else if (err.response.status === 403) {
+          const detail = err.response.data?.detail
+          const userId = (detail && typeof detail === 'object' && 'user_id' in detail)
+            ? (detail as { user_id?: string }).user_id
+            : null
+          if (userId) {
+            saveUserId(userId)
+            toast.info('Аккаунт не подтверждён — мы отправили код на почту')
+            router.push('/verify')
+            return
+          }
           setError('Аккаунт не подтверждён. Проверьте почту — письмо с подтверждением.')
         } else {
           setError(`Ошибка сервера: ${err.response.data?.detail || err.response.statusText}`)
@@ -75,7 +85,12 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="password">Пароль</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Пароль</Label>
+                <Link href="/forgot-password" className="text-xs text-primary hover:underline">
+                  Забыли пароль?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"

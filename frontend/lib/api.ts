@@ -62,6 +62,15 @@ export const auth = {
   resendVerification: (data: { user_id: string; type: 'email' | 'phone' }) =>
     api.post('/auth/resend-verification', data),
 
+  requestVerification: (data: { email: string }) =>
+    api.post<{ success: boolean; user_id: string; message: string }>('/auth/request-verification', data),
+
+  passwordResetRequest: (data: { email: string }) =>
+    api.post<{ success: boolean; message: string }>('/auth/password-reset/request', data),
+
+  passwordResetConfirm: (data: { email: string; code: string; new_password: string; new_password_confirm: string }) =>
+    api.post<{ success: boolean; message: string }>('/auth/password-reset/confirm', data),
+
   changePassword: (data: { old_password: string; new_password: string; new_password_confirm: string }) =>
     api.post('/auth/change-password', data),
 

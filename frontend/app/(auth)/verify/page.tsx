@@ -1,13 +1,14 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { auth } from '@/lib/api'
-import { getUserId } from '@/lib/auth'
+import { getUserId, saveUserId } from '@/lib/auth'
 import { CheckCircle, Loader2 } from 'lucide-react'
 import axios from 'axios'
 
@@ -15,16 +16,16 @@ export default function VerifyPage() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [code, setCode] = useState('')
+  const [email, setEmail] = useState('')
   const [verified, setVerified] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [lookupLoading, setLookupLoading] = useState(false)
   const [cooldown, setCooldown] = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    const id = getUserId()
-    if (!id) { router.push('/register'); return }
-    setUserId(id)
-  }, [router])
+    setUserId(getUserId())
+  }, [])
 
   useEffect(() => {
     if (verified) {
@@ -78,6 +79,23 @@ export default function VerifyPage() {
     }
   }
 
+  async function handleLookup(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email.trim()) return
+    setLookupLoading(true)
+    try {
+      const { data } = await auth.requestVerification({ email: email.trim() })
+      saveUserId(data.user_id)
+      setUserId(data.user_id)
+      toast.success(data.message || 'Код отправлен на email')
+      startCooldown()
+    } catch (err) {
+      toast.error(apiError(err, 'Не удалось найти аккаунт'))
+    } finally {
+      setLookupLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-muted/30">
       <div className="w-full max-w-sm space-y-4">
@@ -85,24 +103,47 @@ export default function VerifyPage() {
           <div className="text-2xl font-bold text-primary mb-1">WayToOffer</div>
           <h1 className="text-xl font-semibold">Подтверждение email</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Мы отправили код подтверждения на ваш email
+            {userId
+              ? 'Мы отправили код подтверждения на ваш email'
+              : 'Введите email от аккаунта — пришлём новый код'}
           </p>
         </div>
 
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Код из письма</CardTitle>
+              <CardTitle className="text-base">{userId ? 'Код из письма' : 'Найти аккаунт'}</CardTitle>
               {verified && (
                 <div className="flex items-center gap-1 text-green-600 text-sm font-medium">
                   <CheckCircle className="w-4 h-4" /> Подтверждён
                 </div>
               )}
             </div>
-            <CardDescription>Введите 6-значный код</CardDescription>
+            <CardDescription>
+              {userId ? 'Введите 6-значный код' : 'Введите email, на который регистрировались'}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {!verified ? (
+            {!userId ? (
+              <form onSubmit={handleLookup} className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                <Button type="submit" disabled={lookupLoading || !email.trim()} className="w-full">
+                  {lookupLoading
+                    ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Отправляем...</>
+                    : 'Прислать код'}
+                </Button>
+              </form>
+            ) : !verified ? (
               <form onSubmit={handleVerify} className="space-y-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="code">Код</Label>
@@ -135,6 +176,13 @@ export default function VerifyPage() {
           </CardContent>
         </Card>
 
+        <p className="text-center text-sm text-muted-foreground">
+          {userId ? (
+            <Link href="/login" className="text-primary font-medium hover:underline">Вернуться ко входу</Link>
+          ) : (
+            <Link href="/register" className="text-primary font-medium hover:underline">Создать новый аккаунт</Link>
+          )}
+        </p>
       </div>
     </div>
   )

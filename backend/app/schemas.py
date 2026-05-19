@@ -60,6 +60,30 @@ class ResendVerificationRequest(BaseModel):
     type: Literal["email", "phone"]
 
 
+class RequestVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+    new_password_confirm: str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password must be no longer than 72 characters")
+        return v
+
+
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
@@ -208,4 +232,10 @@ class AccessTokenResponse(BaseModel):
 
 class VerifyResponse(BaseModel):
     success: bool
+    message: str
+
+
+class RequestVerificationResponse(BaseModel):
+    success: bool
+    user_id: str
     message: str

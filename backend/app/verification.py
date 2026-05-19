@@ -126,12 +126,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-def send_email_code(email: str, code: str) -> None:
-    """
-    Отправка email через SMTP (Google/Yandex/др.).
-    """
-    print(f"[INFO] Sending email to {email}")
-
+def _send_email(email: str, subject: str, body: str) -> None:
     smtp_server = os.getenv("SMTP_SERVER", "").strip()
     smtp_port = os.getenv("SMTP_PORT", "465").strip()
     smtp_user = os.getenv("SMTP_USER", "").strip()
@@ -141,15 +136,6 @@ def send_email_code(email: str, code: str) -> None:
         print("[ERROR] SMTP credentials not configured. Check SMTP_SERVER, SMTP_USER, SMTP_PASSWORD in .env")
         return
 
-    subject = "Ваш код подтверждения — WayToOffer"
-    body = (
-        f"Привет!\n\n"
-        f"Ваш код подтверждения для WayToOffer:\n\n"
-        f"    {code}\n\n"
-        f"Код действителен 10 минут.\n"
-        f"Если вы не запрашивали код — проигнорируйте это письмо."
-    )
-
     msg = MIMEMultipart()
     msg["From"] = f"WayToOffer <{smtp_user}>"
     msg["To"] = email
@@ -157,10 +143,37 @@ def send_email_code(email: str, code: str) -> None:
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
     try:
-        # Яндекс Почта: SSL, порт 465
         server = smtplib.SMTP_SSL(smtp_server, int(smtp_port), timeout=10)
         server.login(smtp_user, smtp_pass)
         server.sendmail(smtp_user, email, msg.as_string())
         server.quit()
     except Exception as exc:
         print(f"[ERROR] Failed to send email via SMTP to {email}: {exc}")
+
+
+def send_email_code(email: str, code: str) -> None:
+    print(f"[INFO] Sending verification email to {email}")
+    _send_email(
+        email,
+        "Ваш код подтверждения — WayToOffer",
+        f"Привет!\n\n"
+        f"Ваш код подтверждения для WayToOffer:\n\n"
+        f"    {code}\n\n"
+        f"Код действителен 10 минут.\n"
+        f"Если вы не запрашивали код — проигнорируйте это письмо.",
+    )
+
+
+def send_password_reset_email(email: str, code: str) -> None:
+    print(f"[INFO] Sending password reset email to {email}")
+    _send_email(
+        email,
+        "Сброс пароля — WayToOffer",
+        f"Привет!\n\n"
+        f"Вы запросили сброс пароля в WayToOffer.\n"
+        f"Введите этот код на странице восстановления:\n\n"
+        f"    {code}\n\n"
+        f"Код действителен 10 минут.\n"
+        f"Если вы не запрашивали сброс — проигнорируйте это письмо,\n"
+        f"никаких изменений в аккаунте не произойдёт.",
+    )
