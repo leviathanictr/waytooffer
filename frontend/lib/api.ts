@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { getAccessToken, getRefreshToken, saveTokens, clearTokens } from './auth'
-import type { Profile, Session, Resume, ResumeListItem } from './types'
+import type { Profile, Session, Resume, ResumeListItem, ActiveSession } from './types'
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
@@ -91,6 +91,10 @@ export const profile = {
 export const session = {
   create: (data: { vacancy_url?: string; vacancy_text?: string }) =>
     api.post<Session>('/session', data),
+
+  getActive: () => api.get<ActiveSession | null>('/session/active'),
+
+  cancel: (sessionId: string) => api.delete(`/session/${sessionId}`),
 
   sendMessage: (sessionId: string, text: string) =>
     api.post<{ reply: string; is_complete: boolean }>(`/session/${sessionId}/message`, { text }),

@@ -188,6 +188,18 @@ class SessionResponse(BaseModel):
     created_at: datetime
 
 
+class MessageItem(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ActiveSessionResponse(BaseModel):
+    session_id: str
+    vacancy_summary: Optional[str] = None
+    created_at: datetime
+    messages: List[MessageItem]
+
+
 # ---------------------------------------------------------------------------
 # Resume
 # ---------------------------------------------------------------------------

@@ -50,6 +50,8 @@ from app.schemas import (
     ResendVerificationRequest,
     ResumeListItem,
     ResumeResponse,
+    ActiveSessionResponse,
+    MessageItem,
     SessionCreate,
     SessionResponse,
     TokenResponse,
@@ -637,6 +639,59 @@ def create_session(
         vacancy_summary=session.vacancy_summary,
         created_at=session.created_at,
     )
+
+
+@app.get("/session/active", response_model=ActiveSessionResponse | None)
+def get_active_session(
+    current_user: Annotated[models.User, Depends(get_current_user)],
+    db: DBSession = Depends(get_db),
+):
+    """Most recent incomplete session for the current user, with messages.
+    Returns null when there is none — frontend uses this to restore an
+    interrupted chat after page reload or navigation."""
+    session = (
+        db.query(models.Session)
+        .filter(
+            models.Session.user_id == current_user.id,
+            models.Session.is_complete == False,  # noqa: E712
+        )
+        .order_by(models.Session.created_at.desc())
+        .first()
+    )
+    if session is None:
+        return None
+
+    msgs = (
+        db.query(models.Message)
+        .filter(models.Message.session_id == session.id)
+        .order_by(models.Message.created_at)
+        .all()
+    )
+    return ActiveSessionResponse(
+        session_id=session.id,
+        vacancy_summary=session.vacancy_summary,
+        created_at=session.created_at,
+        messages=[MessageItem(role=m.role, content=m.content) for m in msgs],
+    )
+
+
+@app.delete("/session/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_session(
+    session_id: str,
+    current_user: Annotated[models.User, Depends(get_current_user)],
+    db: DBSession = Depends(get_db),
+):
+    """Cancel an in-progress chat: delete the session and all its messages.
+    No-op (still 204) when the session is already gone — idempotent so
+    duplicate clicks from the confirm dialog don't error."""
+    session = db.query(models.Session).filter(models.Session.id == session_id).first()
+    if session is None:
+        return
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    db.query(models.Message).filter(models.Message.session_id == session_id).delete()
+    db.delete(session)
+    db.commit()
 
 
 @app.post("/session/{session_id}/message")

@@ -5,6 +5,9 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import {
+  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
+} from '@/components/ui/dialog'
 import { ResumePreview } from '@/components/resume-preview'
 import { session as sessionApi } from '@/lib/api'
 import { isAuthenticated, getAccessToken } from '@/lib/auth'
@@ -49,10 +52,19 @@ async function sendAndPoll(
     }, 600)
   })
 }
-import { Send, Download, RotateCcw, Loader2 } from 'lucide-react'
+import { Send, Download, RotateCcw, Loader2, X } from 'lucide-react'
 import type { Session, Resume, ChatMessage } from '@/lib/types'
 
 type PageState = 'input' | 'chat' | 'done'
+
+function welcomeMessage(vacancySummary?: string | null): ChatMessage {
+  return {
+    role: 'assistant',
+    content: vacancySummary
+      ? `Отлично! Я проанализировал вакансию: "${vacancySummary}". Давай начнём собирать данные для резюме. Расскажи о своём опыте — какие проекты, стажировки или участие в чемпионатах у тебя были?`
+      : 'Привет! Я проанализировал вакансию. Давай начнём составлять резюме. Расскажи о своём опыте — какие проекты, стажировки или участие в чемпионатах у тебя были?',
+  }
+}
 
 async function downloadPdf(resumeId: string) {
   const token = getAccessToken()
@@ -86,6 +98,9 @@ export default function HomePage() {
   const [generating, setGenerating] = useState(false)
 
   const [resume, setResume] = useState<Resume | null>(null)
+  const [restoring, setRestoring] = useState(true)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -93,7 +108,27 @@ export default function HomePage() {
   useEffect(() => {
     if (!isAuthenticated()) {
       router.push('/login')
+      return
     }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await sessionApi.getActive()
+        if (cancelled || !data) return
+        setCurrentSession({
+          session_id: data.session_id,
+          vacancy_summary: data.vacancy_summary,
+          created_at: data.created_at,
+        })
+        setMessages([welcomeMessage(data.vacancy_summary), ...data.messages])
+        setPageState('chat')
+      } catch {
+        // No active session or backend hiccup — fall through to input
+      } finally {
+        if (!cancelled) setRestoring(false)
+      }
+    })()
+    return () => { cancelled = true }
   }, [router])
 
   useEffect(() => {
@@ -118,14 +153,7 @@ export default function HomePage() {
       const payload = inputTab === 'url' ? { vacancy_url: url } : { vacancy_text: text }
       const { data } = await sessionApi.create(payload)
       setCurrentSession(data)
-      setMessages([
-        {
-          role: 'assistant',
-          content: data.vacancy_summary
-            ? `Отлично! Я проанализировал вакансию: "${data.vacancy_summary}". Давай начнём собирать данные для резюме. Расскажи о своём опыте — какие проекты, стажировки или участие в чемпионатах у тебя были?`
-            : 'Привет! Я проанализировал вакансию. Давай начнём составлять резюме. Расскажи о своём опыте — какие проекты, стажировки или участие в чемпионатах у тебя были?',
-        },
-      ])
+      setMessages([welcomeMessage(data.vacancy_summary)])
       setPageState('chat')
     } catch {
       toast.error('Не удалось создать сессию. Проверьте ссылку или попробуйте ещё раз.')
@@ -213,13 +241,39 @@ export default function HomePage() {
     }
   }
 
-  function handleReset() {
+  function resetLocalState() {
     setPageState('input')
     setVacancyUrl('')
     setVacancyText('')
     setCurrentSession(null)
     setMessages([])
     setResume(null)
+  }
+
+  async function handleConfirmCancel() {
+    setCancelling(true)
+    try {
+      if (currentSession) {
+        try {
+          await sessionApi.cancel(currentSession.session_id)
+        } catch {
+          // Idempotent on the backend; ignore (already deleted, network blip, etc.)
+        }
+      }
+      resetLocalState()
+      setCancelOpen(false)
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  // Restoring an interrupted chat — brief loader before showing anything
+  if (restoring) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />
+      </div>
+    )
   }
 
   // State 1 — Input
@@ -331,11 +385,11 @@ export default function HomePage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleReset}
+              onClick={() => setCancelOpen(true)}
               className="text-muted-foreground gap-1"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Заново
+              <X className="w-3.5 h-3.5" />
+              Отменить
             </Button>
           </div>
         </div>
@@ -432,6 +486,26 @@ export default function HomePage() {
             Enter — отправить, Shift+Enter — новая строка
           </p>
         </div>
+
+        <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Прервать диалог?</DialogTitle>
+              <DialogDescription>
+                Все собранные данные и сообщения этой сессии будут удалены безвозвратно.
+                Вы сможете начать заново с другой вакансией.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={cancelling}>
+                Не отменять
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmCancel} disabled={cancelling}>
+                {cancelling ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Удаляем...</> : 'Прервать'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     )
   }
@@ -458,7 +532,7 @@ export default function HomePage() {
           </Button>
           <Button
             variant="outline"
-            onClick={handleReset}
+            onClick={resetLocalState}
             className="flex-1 h-11 gap-2"
           >
             <RotateCcw className="w-4 h-4" />

@@ -34,6 +34,13 @@ export interface ChatMessage {
   content: string
 }
 
+export interface ActiveSession {
+  session_id: string
+  vacancy_summary?: string
+  created_at: string
+  messages: ChatMessage[]
+}
+
 export interface ResumeData {
   personal: {
     name: string

@@ -700,6 +700,10 @@ def generate_resume(session_id: str, db: DBSession) -> models.Resume:
         created_at=datetime.utcnow(),
     )
     db.add(resume_record)
+    # Manual "Сгенерировать резюме" click takes a session that never reached
+    # the AI's JSON-completion marker. Without this flag, /session/active
+    # would still resurrect a session whose resume is already produced.
+    session.is_complete = True
     db.commit()
     db.refresh(resume_record)
 
